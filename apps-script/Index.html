@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --parchment: #F4EEE0; --ink: #2A241E; --wine: #7A2331;
+      --gold: #B9862E; --green: #3F5D48; --line: #DCD0B4; --card: #FBF8F0;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--parchment); color: var(--ink); font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+    .wrap { max-width: 480px; margin: 0 auto; padding: 28px 20px 60px; }
+    .eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--wine); font-weight: 600; margin-bottom: 6px; }
+    h1 { font-family: 'Spectral', serif; font-weight: 600; font-size: 26px; margin: 0 0 4px; line-height: 1.15; }
+    h2 { font-family: 'Spectral', serif; font-weight: 600; font-size: 19px; margin: 18px 0 10px; }
+    .subtitle { color: #6B6154; font-size: 14px; margin-bottom: 24px; }
+    .field { margin-bottom: 14px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    input, select { width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-size: 15px; font-family: 'Inter', sans-serif; color: var(--ink); }
+    input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+    .senha-wrap { position: relative; }
+    .senha-wrap input { padding-right: 42px; }
+    .olho { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 13px; color: #6B6154; user-select: none; }
+    .btn-seal { width: 100%; padding: 13px; border: none; border-radius: 999px; background: linear-gradient(180deg, #C99A3D, var(--gold)); color: #fff; font-weight: 600; font-size: 15px; cursor: pointer; box-shadow: 0 2px 0 rgba(0,0,0,.15) inset, 0 3px 8px rgba(185,134,46,.35); margin-top: 6px; }
+    .btn-seal:active { transform: translateY(1px); }
+    .btn-linha { width: 100%; padding: 11px; border-radius: 999px; background: transparent; border: 1px solid var(--line); color: var(--ink); font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 8px; }
+    .link-txt { text-align: center; margin-top: 16px; font-size: 13px; color: #6B6154; }
+    .link-txt a { color: var(--wine); font-weight: 600; text-decoration: none; cursor: pointer; }
+    .erro { color: var(--wine); font-size: 13px; margin-top: 10px; min-height: 16px; }
+    .ok { color: var(--green); font-size: 13px; margin-top: 10px; min-height: 16px; }
+
+    .filho-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .filho-row input { flex: 2; } .filho-row select { flex: 1.4; }
+    .filho-row button { border: none; background: #EFE6C9; color: var(--wine); border-radius: 8px; width: 34px; height: 40px; font-weight: 700; cursor: pointer; }
+    .lista-filhos-add { list-style: none; padding: 0; margin: 0 0 12px; }
+    .lista-filhos-add li { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; display: flex; justify-content: space-between; }
+    .lista-filhos-add li span.remover { color: var(--wine); cursor: pointer; font-weight: 700; }
+
+    .quem { display: flex; align-items: center; justify-content: space-between; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; gap: 8px; flex-wrap: wrap; }
+    .quem select { border: none; background: transparent; font-weight: 600; font-size: 13px; color: var(--wine); padding: 0; width: auto; }
+    .quem-acoes { display: flex; gap: 12px; align-items: center; }
+    .link-mini { color: #6B6154; text-decoration: underline; cursor: pointer; font-size: 12px; background: none; border: none; padding: 0; }
+    .btn-coord { background: var(--wine); color: #fff; border: none; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 16px 14px; margin-bottom: 14px; position: relative; overflow: hidden; }
+    .card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--wine); }
+    .card .data { font-family: 'Spectral', serif; font-size: 19px; font-weight: 600; }
+    .card .hora { color: #6B6154; font-size: 13px; margin-bottom: 2px; text-transform: capitalize; }
+    .card .desc { color: #6B6154; font-size: 13px; margin-bottom: 12px; }
+    .badges { display: flex; gap: 10px; margin-bottom: 12px; }
+    .badge { flex: 1; text-align: center; border-radius: 10px; padding: 8px 6px; font-size: 12px; font-weight: 600; border: 1px dashed var(--line); }
+    .badge b { display: block; font-family: 'Spectral', serif; font-size: 16px; font-weight: 700; }
+    .badge.coroinha { color: var(--wine); } .badge.cerim { color: var(--green); }
+    .badge.abaixo-min { border: 1px solid var(--wine); background: #FBEAE9; }
+    .badge .aviso { display: block; font-size: 10px; font-weight: 700; color: var(--wine); margin-top: 2px; }
+    .acao button { width: 100%; padding: 10px; border-radius: 999px; border: none; font-weight: 600; font-size: 14px; cursor: pointer; }
+    .servir { background: var(--wine); color: #fff; }
+    .cancelar { background: transparent; color: var(--wine); border: 1px solid var(--wine) !important; }
+    .cheio { background: #EAE2CC; color: #9c927c; }
+    .tag-escalado { display: inline-block; background: #EFE6C9; color: #7A5B12; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; margin-bottom: 8px; }
+    .vazio { text-align: center; color: #6B6154; font-size: 14px; padding: 30px 0; }
+    .hidden { display: none !important; }
+
+    .compromisso-card { background: var(--card); border: 1px solid var(--line); border-left: 5px solid var(--gold); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .compromisso-card .info b { font-family: 'Spectral', serif; font-size: 15px; }
+    .compromisso-card .info span { display: block; font-size: 12px; color: #6B6154; }
+    .compromisso-card button { border: 1px solid var(--wine); color: var(--wine); background: transparent; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+
+    .chip { display: inline-flex; align-items: center; gap: 5px; background: #EFE6C9; color: #5c4712; border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12px; margin: 2px 4px 2px 0; }
+    .chip .x { cursor: pointer; font-weight: 700; background: rgba(0,0,0,.08); border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+    .add-linha { display: flex; gap: 6px; margin-top: 6px; }
+    .add-linha select { flex: 1; padding: 6px 8px; font-size: 12px; }
+    .add-linha button { border: none; background: var(--green); color: #fff; border-radius: 8px; padding: 0 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: var(--green); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.2); z-index: 200; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(20,16,10,.55); display: flex; align-items: flex-start; justify-content: center; z-index: 100; padding: 24px 16px; overflow-y: auto; }
+    .modal-panel { background: var(--parchment); width: 100%; max-width: 480px; max-height: calc(100vh - 48px); overflow-y: auto; border-radius: 18px; padding: 20px 20px 30px; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+    .modal-fechar { float: right; border: none; background: none; font-size: 20px; color: #6B6154; cursor: pointer; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .missa-mini { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 12.5px; }
+    .missa-mini .linha1 { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 4px; }
+    .missa-mini .alerta { color: var(--wine); font-weight: 700; }
+    .missa-acoes { display: flex; gap: 14px; margin: 6px 0; }
+    .edicao-missa { background: #fff; border: 1px dashed var(--line); border-radius: 8px; padding: 10px; margin: 8px 0; }
+    .painel-cta { display:flex; align-items:center; justify-content:space-between; background: linear-gradient(135deg, var(--wine), #932c3d); color:#fff; border-radius:12px; padding:14px 16px; margin-bottom:16px; cursor:pointer; box-shadow:0 3px 10px rgba(122,35,49,.25); }
+    .painel-cta-texto b { font-family:'Spectral',serif; font-size:16px; display:block; }
+    .painel-cta-texto span { font-size:12px; opacity:.85; }
+    .painel-cta-seta { font-size:22px; opacity:.8; }
+    .rodape-teocode { text-align: center; font-size: 11px; color: #9c927c; margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); line-height: 1.5; }
+    .calendario { background: var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:14px; }
+    .cal-cabecalho { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; font-family:'Spectral',serif; font-weight:600; font-size:15px; }
+    .cal-nav { background:none; border:none; font-size:20px; color:var(--wine); cursor:pointer; padding:0 8px; }
+    .cal-dias-semana { display:grid; grid-template-columns: repeat(7,1fr); text-align:center; font-size:11px; color:#9c927c; margin-bottom:4px; font-weight:600; }
+    .cal-grid { display:grid; grid-template-columns: repeat(7,1fr); gap:3px; }
+    .cal-dia { aspect-ratio: 1; display:flex; align-items:center; justify-content:center; border-radius:8px; font-size:13px; color:#c9bfa8; position:relative; }
+    .cal-dia.vazio { visibility:hidden; }
+    .cal-dia.com-vaga { cursor:pointer; color:var(--ink); background:#fff; border:1px solid var(--line); }
+    .cal-dia.com-vaga::after { content:''; width:5px; height:5px; border-radius:50%; background:var(--gold); position:absolute; bottom:4px; }
+    .cal-dia.selecionado { background:var(--wine); color:#fff; border-color:var(--wine); }
+    .cal-dia.selecionado::after { background:#fff; }
+    .cal-dia.hoje { font-weight:700; text-decoration:underline; }
+    .linha-painel { text-align: right; margin-bottom: 6px; }
+    .link-painel { font-size: 13px; color: var(--wine); font-weight: 600; text-decoration: underline; cursor: pointer; }
+    .abas-coordenador { display:flex; gap:4px; margin:14px 0 18px; border-bottom:1px solid var(--line); }
+    .aba-btn { flex:1; background:none; border:none; padding:10px 2px; font-size:12px; font-weight:600; color:#9c927c; cursor:pointer; border-bottom:2px solid transparent; }
+    .aba-btn.ativa { color:var(--wine); border-bottom-color:var(--wine); }
+    .aba-conteudo.hidden { display:none; }
+    .dash-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0 18px; }
+    .dash-card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 10px; text-align:center; }
+    .dash-card b { display:block; font-family:'Spectral',serif; font-size:26px; font-weight:700; color:var(--wine); line-height:1.1; }
+    .dash-card span { font-size:11px; color:#6B6154; }
+    .dash-card.critico { border-color:var(--wine); background:#FBEAE9; }
+    .dash-alerta { background:#FBEAE9; border:1px solid var(--wine); border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:12.5px; }
+    .dash-alerta b { display:block; font-family:'Spectral',serif; font-size:14px; color:var(--wine); margin-bottom:2px; }
+    .dash-proxima-card { background:var(--card); border:1px solid var(--line); border-left:5px solid var(--gold); border-radius:10px; padding:12px 14px; font-size:13px; }
+    .dash-proxima-card .data { font-family:'Spectral',serif; font-size:17px; font-weight:600; }
+    .dash-proxima-card .hora { color:#6B6154; font-size:12px; margin-bottom:8px; text-transform:capitalize; }
+    .btn-whats { background:#25D366; color:#fff; border:none; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; }
+    .chamar-item { display:flex; justify-content:space-between; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:6px; font-size:12.5px; gap:8px; }
+    .chamar-item .info b { display:block; }
+    .chamar-item .info span { font-size:11px; color:#6B6154; }
+    .chamar-sem-celular { font-size:11px; color:#9c927c; font-style:italic; white-space:nowrap; }
+    .chamar-link { background:#25D366; color:#fff; text-decoration:none; border-radius:999px; padding:5px 10px; font-size:11px; font-weight:600; white-space:nowrap; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- LOGIN -->
+    <div id="tela-login">
+      <div class="eyebrow">Escala Litúrgica</div>
+      <h1>Coroinhas &amp; Cerimoniários</h1>
+      <div class="subtitle">Entre para escolher em quais missas seu filho vai servir.</div>
+      <div class="field"><label for="in-usuario">Usuário</label><input id="in-usuario" type="text" placeholder="ex: Nome.Sobrenome"></div>
+      <div class="field">
+        <label for="in-senha">Senha</label>
+        <div class="senha-wrap"><input id="in-senha" type="password" placeholder="Senha"><span class="olho" onclick="alternarSenha('in-senha', this)">mostrar</span></div>
+      </div>
+      <button class="btn-seal" onclick="fazerLogin()">Entrar</button>
+      <div class="erro" id="erro-login"></div>
+      <div class="link-txt">
+        Primeiro acesso? <a onclick="mostrarTela('tela-cadastro')">Cadastre-se</a><br>
+        <a onclick="mostrarTela('tela-esqueci')">Esqueci minha senha</a>
+      </div>
+    </div>
+
+    <!-- CADASTRO -->
+    <div id="tela-cadastro" class="hidden">
+      <div class="eyebrow">Escala Litúrgica</div>
+      <h1>Criar cadastro</h1>
+      <div class="subtitle">Cadastre você e seus filhos coroinhas/cerimoniários.</div>
+      <div class="field"><label>Seu nome completo</label><input id="cad-nome" type="text" placeholder="Nome e sobrenome"></div>
+      <div class="field"><label>E-mail</label><input id="cad-email" type="email" placeholder="seu@email.com"></div>
+      <div class="field"><label>Celular / WhatsApp</label><input id="cad-celular" type="tel" placeholder="(11) 90000-0000"></div>
+      <div class="field">
+        <label>Senha</label>
+        <div class="senha-wrap"><input id="cad-senha" type="password" placeholder="Crie uma senha"><span class="olho" onclick="alternarSenha('cad-senha', this)">mostrar</span></div>
+      </div>
+
+      <h2>Filhos</h2>
+      <ul class="lista-filhos-add" id="lista-filhos"></ul>
+      <div class="filho-row">
+        <input id="filho-nome" type="text" placeholder="Nome do filho(a)">
+        <select id="filho-funcao"><option value="Coroinha">Coroinha</option><option value="Cerimoniário">Cerimoniário</option></select>
+        <button type="button" onclick="adicionarFilho()">+</button>
+      </div>
+
+      <button class="btn-seal" onclick="enviarCadastro()">Concluir cadastro</button>
+      <button class="btn-linha" onclick="mostrarTela('tela-login')">Voltar ao login</button>
+      <div class="erro" id="erro-cadastro"></div>
+    </div>
+
+    <!-- ESQUECI SENHA -->
+    <div id="tela-esqueci" class="hidden">
+      <div class="eyebrow">Escala Litúrgica</div>
+      <h1>Esqueci minha senha</h1>
+      <div class="subtitle">Informe seu usuário — vamos mandar um link por e-mail para você criar uma senha nova.</div>
+      <div class="field"><label>Usuário</label><input id="esq-usuario" type="text" placeholder="ex: Gustavo.Teodoro"></div>
+      <button class="btn-seal" onclick="enviarRecuperacao()">Enviar link</button>
+      <button class="btn-linha" onclick="mostrarTela('tela-login')">Voltar ao login</button>
+      <div class="ok" id="msg-esqueci"></div>
+    </div>
+
+    <!-- REDEFINIR SENHA -->
+    <div id="tela-redefinir" class="hidden">
+      <div class="eyebrow">Escala Litúrgica</div>
+      <h1>Criar nova senha</h1>
+      <div class="subtitle">Defina sua nova senha de acesso.</div>
+      <div class="field">
+        <label>Nova senha</label>
+        <div class="senha-wrap"><input id="red-senha1" type="password" placeholder="Nova senha"><span class="olho" onclick="alternarSenha('red-senha1', this)">mostrar</span></div>
+      </div>
+      <div class="field">
+        <label>Confirmar nova senha</label>
+        <div class="senha-wrap"><input id="red-senha2" type="password" placeholder="Repita a senha"><span class="olho" onclick="alternarSenha('red-senha2', this)">mostrar</span></div>
+      </div>
+      <button class="btn-seal" onclick="salvarNovaSenha()">Salvar nova senha</button>
+      <div class="erro" id="erro-redefinir"></div>
+      <div class="ok hidden" id="ok-redefinir">Senha alterada! <a onclick="mostrarTela('tela-login')" style="color:var(--wine);cursor:pointer;font-weight:600;">Entrar agora</a></div>
+    </div>
+
+    <!-- AGENDA -->
+    <div id="tela-agenda" class="hidden">
+      <div class="eyebrow">Escala Litúrgica</div>
+      <h1>Agenda da família</h1>
+      <div class="linha-painel">
+        <a class="link-painel hidden" id="link-painel-coordenador" onclick="abrirPainelCoordenador()">Painel do Coordenador</a>
+      </div>
+      <div class="subtitle">Acompanhe os compromissos e escale seus filhos.</div>
+
+      <div class="quem">
+        
+        <span>Inscrevendo: <select id="sel-crianca" onchange="renderMissas()"></select></span>
+
+        <div class="quem-acoes">
+          <button class="link-mini" onclick="sair()">sair</button>
+        </div>
+      </div>
+
+      <h2>Meus compromissos</h2>
+      <div id="lista-compromissos"></div>
+
+      <h2>Vagas disponíveis</h2>
+        <div class="calendario">
+          <div class="cal-cabecalho">
+            <button class="cal-nav" onclick="mudarMes(-1)">‹</button>
+            <span id="cal-mes-ano"></span>
+            <button class="cal-nav" onclick="mudarMes(1)">›</button>
+          </div>
+          <div class="cal-dias-semana"><span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span></div>
+          <div class="cal-grid" id="cal-grid"></div>
+        </div>
+        <div id="lista-missas"></div>
+            </div>
+
+    <!-- MODAL COORDENADOR -->
+    <div id="modal-coordenador" class="modal-overlay hidden">
+      <div class="modal-panel">
+        <button class="modal-fechar" onclick="fecharPainelCoordenador()">✕</button>
+        <div class="eyebrow">Painel do Coordenador</div>
+        <h1 style="font-size:22px;">Gestão da escala</h1>
+
+        <div class="abas-coordenador">
+          <button class="aba-btn" id="aba-btn-geral" onclick="trocarAbaCoordenador('geral')">Visão geral</button>
+          <button class="aba-btn" id="aba-btn-recorrente" onclick="trocarAbaCoordenador('recorrente')">Gerar recorrentes</button>
+          <button class="aba-btn" id="aba-btn-futuras" onclick="trocarAbaCoordenador('futuras')">Missas futuras</button>
+          <button class="aba-btn" id="aba-btn-lembretes" onclick="trocarAbaCoordenador('lembretes')">Lembretes</button>
+        </div>
+
+        <div id="aba-geral" class="aba-conteudo hidden">
+          <div id="dash-alertas"></div>
+
+          <div class="dash-grid">
+            <div class="dash-card" id="dash-card-abaixo">
+              <b id="dash-num-abaixo">–</b>
+              <span>missas abaixo do mínimo</span>
+            </div>
+            <div class="dash-card">
+              <b id="dash-num-vagas7">–</b>
+              <span>vagas em aberto (7 dias)</span>
+            </div>
+            <div class="dash-card">
+              <b id="dash-num-ocupacao">–</b>
+              <span>ocupação geral</span>
+            </div>
+            <div class="dash-card">
+              <b id="dash-num-criancas">–</b>
+              <span>crianças ativas</span>
+            </div>
+          </div>
+
+          <h2>Próxima missa</h2>
+          <div id="dash-proxima"><div class="vazio">Carregando…</div></div>
+        </div>
+
+        <div id="aba-recorrente" class="aba-conteudo hidden">
+          <div class="field"><label>Dia da semana</label>
+            <select id="rec-dia">
+              <option value="domingo">Domingo</option><option value="segunda">Segunda</option>
+              <option value="terca">Terça</option><option value="quarta">Quarta</option>
+              <option value="quinta">Quinta</option><option value="sexta">Sexta</option>
+              <option value="sabado">Sábado</option>
+            </select>
+          </div>
+          <div class="grid2">
+            <div class="field"><label>Horário</label><input id="rec-horario" type="time" value="19:00"></div>
+            <div class="field"><label>Semanas à frente</label><input id="rec-semanas" type="number" value="4" min="1"></div>
+          </div>
+          <div class="field"><label>Descrição (opcional)</label><input id="rec-descricao" type="text" placeholder="Missa Dominical"></div>
+          <div class="grid2">
+            <div class="field"><label>Mín. Coroinha</label><input id="rec-min-coroinha" type="number" value="3"></div>
+            <div class="field"><label>Máx. Coroinha</label><input id="rec-max-coroinha" type="number" value="6"></div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label>Mín. Cerimoniário</label><input id="rec-min-cerim" type="number" value="2"></div>
+            <div class="field"><label>Máx. Cerimoniário</label><input id="rec-max-cerim" type="number" value="3"></div>
+          </div>
+          <button class="btn-seal" onclick="gerarRecorrentes()">Gerar missas</button>
+          <div class="ok" id="msg-recorrente"></div>
+        </div>
+
+        <div id="aba-futuras" class="aba-conteudo hidden">
+          <div id="lista-coordenador"><div class="vazio">Carregando…</div></div>
+        </div>
+
+                <div id="aba-lembretes" class="aba-conteudo hidden">
+          <button class="btn-linha" onclick="enviarLembretesAgora()">Enviar lembretes agora</button>
+          <div class="ok" id="msg-lembretes"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="modal-chamar" class="modal-overlay hidden">
+      <div class="modal-panel">
+        <button class="modal-fechar" onclick="fecharModalChamar()">✕</button>
+        <div class="eyebrow">Chamar responsáveis</div>
+        <h1 style="font-size:20px;" id="chamar-titulo">Quem está livre</h1>
+        <div id="chamar-lista"><div class="vazio">Carregando…</div></div>
+      </div>
+    </div>
+
+  </div>
+  <footer class="rodape-teocode">
+    © 2024 TeoCode · CNPJ: 41.061.643/0001-22 · (11) 99567-6202
+  </footer>
+
+  <script>
+    var TOKEN_RESET = "<?= tokenReset ?>";
+    var sessao = null;
+    var missas = [];
+    var filhosCadastro = [];
+    var DIAS_SEMANA_TXT = { domingo:'Domingo', segunda:'Segunda', terca:'Terça', quarta:'Quarta', quinta:'Quinta', sexta:'Sexta', sabado:'Sábado' };
+    var mesAtual = new Date(); mesAtual.setDate(1);
+    var diaSelecionado = null;
+
+    window.onload = function () {
+      if (TOKEN_RESET) { mostrarTela('tela-redefinir'); return; }
+      tentarSessaoSalva();
+    };
+
+    function mostrarTela(id) {
+      ['tela-login','tela-cadastro','tela-esqueci','tela-redefinir','tela-agenda'].forEach(function (t) {
+        document.getElementById(t).classList.add('hidden');
+      });
+      document.getElementById(id).classList.remove('hidden');
+    }
+
+    function alternarSenha(idInput, el) {
+      const input = document.getElementById(idInput);
+      if (input.type === 'password') { input.type = 'text'; el.textContent = 'ocultar'; }
+      else { input.type = 'password'; el.textContent = 'mostrar'; }
+    }
+
+    function toast(msg) {
+      const t = document.createElement('div');
+      t.className = 'toast'; t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(function () { t.remove(); }, 2200);
+    }
+
+    /* ---------- Sessão local (60 dias) ---------- */
+    function salvarSessao(usuario, senha) {
+      try {
+        localStorage.setItem('escala_usuario', usuario);
+        localStorage.setItem('escala_senha', senha);
+        localStorage.setItem('escala_ts', String(Date.now()));
+      } catch (e) {}
+    }
+    function limparSessao() {
+      try {
+        localStorage.removeItem('escala_usuario');
+        localStorage.removeItem('escala_senha');
+        localStorage.removeItem('escala_ts');
+      } catch (e) {}
+    }
+    function tentarSessaoSalva() {
+      try {
+        const usuario = localStorage.getItem('escala_usuario');
+        const senha = localStorage.getItem('escala_senha');
+        const ts = Number(localStorage.getItem('escala_ts') || 0);
+        const limiteMs = 60 * 24 * 60 * 60 * 1000;
+        if (usuario && senha && (Date.now() - ts) < limiteMs) {
+          google.script.run
+            .withSuccessHandler(function (res) {
+              if (res.sucesso) { entrarComSessao(res); } else { limparSessao(); mostrarTela('tela-login'); }
+            })
+            .withFailureHandler(function () { mostrarTela('tela-login'); })
+            .validarLogin(usuario, senha);
+          return;
+        }
+      } catch (e) {}
+      mostrarTela('tela-login');
+    }
+
+    /* ---------- Login ---------- */
+    function fazerLogin() {
+      const usuario = document.getElementById('in-usuario').value.trim();
+      const senha = document.getElementById('in-senha').value;
+      const erroEl = document.getElementById('erro-login');
+      erroEl.textContent = '';
+      if (!usuario || !senha) { erroEl.textContent = 'Preencha usuário e senha.'; return; }
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res.sucesso) { erroEl.textContent = res.mensagem; return; }
+          salvarSessao(usuario, senha);
+          entrarComSessao(res);
+        })
+        .withFailureHandler(function (err) { erroEl.textContent = 'Erro: ' + err.message; })
+        .validarLogin(usuario, senha);
+    }
+
+    function entrarComSessao(res) {
+  sessao = res;
+  montarSeletorCriancas();
+  document.getElementById('link-painel-coordenador').classList.toggle('hidden', !sessao.coordenador);
+  mostrarTela('tela-agenda');
+  carregarMissas();
+  if (sessao.coordenador) atualizarResumoPendencias();
+}
+
+function atualizarResumoPendencias() {
+  if (!sessao || !sessao.coordenador) return;
+  google.script.run
+    .withSuccessHandler(function (res) {
+      const abaixo = res.filter(function (m) { return m.abaixoMinCoroinha || m.abaixoMinCerimoniario; }).length;
+      document.getElementById('painel-cta-sub').textContent =
+        abaixo > 0 ? (abaixo + ' missa(s) abaixo do mínimo') : 'Gerenciar missas e escalas';
+    })
+    .withFailureHandler(function () {})
+    .listarMissasParaCoordenador();
+}
+
+function fecharPainelCoordenador() {
+  document.getElementById('modal-coordenador').classList.add('hidden');
+  atualizarResumoPendencias();
+}
+
+    function montarSeletorCriancas() {
+      const sel = document.getElementById('sel-crianca');
+      sel.innerHTML = '';
+      sessao.criancas.forEach(function (c, i) {
+        const opt = document.createElement('option');
+        opt.value = i; opt.textContent = c.nome + ' — ' + c.funcao;
+        sel.appendChild(opt);
+      });
+    }
+
+    function sair() {
+      sessao = null;
+      limparSessao();
+      document.getElementById('in-senha').value = '';
+      mostrarTela('tela-login');
+    }
+
+    /* ---------- Cadastro ---------- */
+    function adicionarFilho() {
+      const nome = document.getElementById('filho-nome').value.trim();
+      const funcao = document.getElementById('filho-funcao').value;
+      if (!nome) return;
+      filhosCadastro.push({ nome: nome, funcao: funcao });
+      document.getElementById('filho-nome').value = '';
+      renderFilhosCadastro();
+    }
+    function removerFilho(i) {
+      filhosCadastro.splice(i, 1);
+      renderFilhosCadastro();
+    }
+    function renderFilhosCadastro() {
+      const ul = document.getElementById('lista-filhos');
+      ul.innerHTML = '';
+      filhosCadastro.forEach(function (f, i) {
+        const li = document.createElement('li');
+        li.innerHTML = '<span>' + f.nome + ' — ' + f.funcao + '</span><span class="remover" onclick="removerFilho(' + i + ')">remover</span>';
+        ul.appendChild(li);
+      });
+    }
+    function enviarCadastro() {
+      const erroEl = document.getElementById('erro-cadastro');
+      erroEl.textContent = '';
+      const dados = {
+        nome: document.getElementById('cad-nome').value.trim(),
+        email: document.getElementById('cad-email').value.trim(),
+        celular: document.getElementById('cad-celular').value.trim(),
+        senha: document.getElementById('cad-senha').value,
+        filhos: filhosCadastro
+      };
+      if (!dados.nome || !dados.email || !dados.senha) { erroEl.textContent = 'Preencha nome, e-mail e senha.'; return; }
+      if (filhosCadastro.length === 0) { erroEl.textContent = 'Adicione ao menos um filho.'; return; }
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res.sucesso) { erroEl.textContent = res.mensagem; return; }
+          salvarSessao(res.usuario, dados.senha);
+          toast('Cadastro concluído! Usuário: ' + res.usuario);
+          entrarComSessao(res);
+        })
+        .withFailureHandler(function (err) { erroEl.textContent = 'Erro: ' + err.message; })
+        .cadastrarResponsavel(dados);
+    }
+
+    /* ---------- Esqueci / redefinir senha ---------- */
+    function enviarRecuperacao() {
+      const usuario = document.getElementById('esq-usuario').value.trim();
+      const msgEl = document.getElementById('msg-esqueci');
+      if (!usuario) return;
+      msgEl.textContent = 'Enviando…';
+      google.script.run
+        .withSuccessHandler(function () {
+          msgEl.textContent = 'Se o usuário existir, enviamos um link por e-mail (válido por 1 hora).';
+        })
+        .withFailureHandler(function (err) { msgEl.textContent = 'Erro: ' + err.message; })
+        .solicitarRecuperacaoSenha(usuario);
+    }
+
+    function salvarNovaSenha() {
+      const s1 = document.getElementById('red-senha1').value;
+      const s2 = document.getElementById('red-senha2').value;
+      const erroEl = document.getElementById('erro-redefinir');
+      erroEl.textContent = '';
+      if (s1.length < 4) { erroEl.textContent = 'A senha deve ter ao menos 4 caracteres.'; return; }
+      if (s1 !== s2) { erroEl.textContent = 'As senhas não conferem.'; return; }
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res.sucesso) { erroEl.textContent = res.mensagem; return; }
+          document.getElementById('ok-redefinir').classList.remove('hidden');
+        })
+        .withFailureHandler(function (err) { erroEl.textContent = 'Erro: ' + err.message; })
+        .redefinirSenha(TOKEN_RESET, s1);
+    }
+
+    /* ---------- Agenda ---------- */
+    function carregarMissas() {
+      document.getElementById('lista-missas').innerHTML = '<div class="vazio">Carregando missas…</div>';
+      google.script.run
+        .withSuccessHandler(function (res) { missas = res; renderMissas(); })
+        .withFailureHandler(function (err) {
+          document.getElementById('lista-missas').innerHTML = '<div class="vazio">Erro ao carregar: ' + err.message + '</div>';
+        })
+        .listarMissas();
+    }
+
+    function criancaAtual() {
+      const idx = Number(document.getElementById('sel-crianca').value);
+      return sessao.criancas[idx];
+    }
+
+    function renderMissas() {
+      renderCompromissos();
+      renderCalendario();
+      renderDisponiveis();
+    }
+
+    function renderCompromissos() {
+      const cont = document.getElementById('lista-compromissos');
+      const compromissos = [];
+      missas.forEach(function (m) {
+        sessao.criancas.forEach(function (crianca) {
+          const listaFuncao = crianca.funcao === 'Coroinha' ? m.coroinhas : m.cerimoniarios;
+          if (listaFuncao.includes(String(crianca.id))) {
+            compromissos.push({ missa: m, crianca: crianca });
+          }
+        });
+      });
+
+      if (compromissos.length === 0) {
+        cont.innerHTML = '<div class="vazio">Nenhum compromisso agendado ainda.</div>';
+        return;
+      }
+
+      cont.innerHTML = '';
+      compromissos.forEach(function (c) {
+        const div = document.createElement('div');
+        div.className = 'compromisso-card';
+        div.innerHTML =
+          '<div class="info"><b>' + c.crianca.nome + '</b>' +
+          '<span>' + c.crianca.funcao + ' \u00b7 ' + c.missa.data + ' (' + c.missa.diaSemana + ') \u00b7 ' + c.missa.horario + '</span></div>' +
+          '<button onclick="cancelarInscricaoDireto(' + c.missa.linha + ',\'' + c.crianca.id + '\',\'' + c.crianca.funcao + '\',\'' + c.crianca.nome.replace(/'/g, "\\'") + '\')">Cancelar</button>';
+        cont.appendChild(div);
+      });
+    }
+
+    function renderDisponiveis() {
+      const cont = document.getElementById('lista-missas');
+      const crianca = criancaAtual();
+      if (!crianca) return;
+
+      if (!diaSelecionado) {
+        cont.innerHTML = '<div class="vazio">Toque em um dia marcado com • no calendário para ver as vagas.</div>';
+        return;
+      }
+
+      const disponiveis = missas.filter(function (m) {
+        if (m.data !== diaSelecionado) return false;
+        const listaFuncao = crianca.funcao === 'Coroinha' ? m.coroinhas : m.cerimoniarios;
+        const maxFuncao = crianca.funcao === 'Coroinha' ? m.maxCoroinha : m.maxCerimoniario;
+        const jaEscalado = listaFuncao.includes(String(crianca.id));
+        if (jaEscalado) return false;
+        if (listaFuncao.length >= maxFuncao) return false;
+        return true;
+      });
+
+      if (disponiveis.length === 0) {
+        cont.innerHTML = '<div class="vazio">Nenhuma vaga disponível em ' + diaSelecionado + ' para ' + crianca.nome + '.</div>';
+        return;
+      }
+
+      cont.innerHTML = '';
+      disponiveis.forEach(function (m) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        function badgeHtml(rotulo, classe, min, max, lista) {
+          const abaixoMin = lista.length < min;
+          const aviso = abaixoMin ? '<span class="aviso">faltam ' + (min - lista.length) + '</span>' : '';
+          return '<div class="badge ' + classe + (abaixoMin ? ' abaixo-min' : '') + '">' +
+            '<b>' + lista.length + ' / ' + min + '\u2013' + max + '</b>' + rotulo + aviso + '</div>';
+        }
+        card.innerHTML =
+          '<div class="data">' + m.data + '</div>' +
+          '<div class="hora">' + m.diaSemana + ' \u00b7 ' + m.horario + '</div>' +
+          (m.descricao ? '<div class="desc">' + m.descricao + '</div>' : '') +
+          '<div class="badges">' +
+            badgeHtml('Coroinha', 'coroinha', m.minCoroinha, m.maxCoroinha, m.coroinhas) +
+            badgeHtml('Cerimoniário', 'cerim', m.minCerimoniario, m.maxCerimoniario, m.cerimoniarios) +
+          '</div>' +
+          '<div class="acao"><button class="servir" onclick="inscreverMissa(' + m.linha + ')">Servir nesta missa</button></div>';
+        cont.appendChild(card);
+      });
+    }
+
+    function cancelarInscricaoDireto(linha, criancaId, funcao, nome) {
+      if (!confirm('Cancelar a inscrição de ' + nome + ' nessa missa?')) return;
+      google.script.run
+        .withSuccessHandler(function () { toast('Inscrição cancelada.'); carregarMissas(); })
+        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
+        .cancelar(linha, criancaId, funcao);
+    }
+
+    function inscreverMissa(linha) {
+      const crianca = criancaAtual();
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res.sucesso) { alert(res.mensagem); return; }
+          toast('Escalado com sucesso!');
+          carregarMissas();
+        })
+        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
+        .inscrever(linha, crianca.id, crianca.funcao);
+    }
+
+    /* ---------- Painel do coordenador ---------- */
+    var todasCriancas = [];
+
+    function trocarAbaCoordenador(aba) {
+      ['geral','recorrente','futuras','lembretes'].forEach(function (a) {
+        document.getElementById('aba-' + a).classList.toggle('hidden', a !== aba);
+        document.getElementById('aba-btn-' + a).classList.toggle('ativa', a === aba);
+      });
+      if (aba === 'futuras') carregarListaCoordenador();
+      if (aba === 'geral') carregarDashboard();
+    }
+
+    function abrirPainelCoordenador() {
+      document.getElementById('modal-coordenador').classList.remove('hidden');
+      google.script.run.withSuccessHandler(function (res) { todasCriancas = res; }).listarCriancas();
+      trocarAbaCoordenador('geral');
+    }
+
+    function fecharPainelCoordenador() {
+      document.getElementById('modal-coordenador').classList.add('hidden');
+    }
+
+    function gerarRecorrentes() {
+      const config = {
+        diaSemana: document.getElementById('rec-dia').value,
+        horario: document.getElementById('rec-horario').value,
+        semanas: document.getElementById('rec-semanas').value,
+        descricao: document.getElementById('rec-descricao').value,
+        minCoroinha: document.getElementById('rec-min-coroinha').value,
+        maxCoroinha: document.getElementById('rec-max-coroinha').value,
+        minCerimoniario: document.getElementById('rec-min-cerim').value,
+        maxCerimoniario: document.getElementById('rec-max-cerim').value
+      };
+      const msgEl = document.getElementById('msg-recorrente');
+      msgEl.textContent = 'Gerando…';
+      google.script.run
+        .withSuccessHandler(function (res) {
+          msgEl.textContent = res.sucesso ? (res.criadas + ' missa(s) criada(s).') : res.mensagem;
+          carregarListaCoordenador();
+          carregarMissas();
+        })
+        .withFailureHandler(function (err) { msgEl.textContent = 'Erro: ' + err.message; })
+        .gerarMissasRecorrentes(config);
+    }
+
+    function carregarListaCoordenador() {
+      const cont = document.getElementById('lista-coordenador');
+      cont.innerHTML = '<div class="vazio">Carregando…</div>';
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res.length === 0) { cont.innerHTML = '<div class="vazio">Nenhuma missa futura.</div>'; return; }
+          cont.innerHTML = '';
+          res.forEach(function (m) { cont.appendChild(montarMissaCoordenador(m)); });
+        })
+        .withFailureHandler(function (err) { cont.innerHTML = '<div class="vazio">Erro: ' + err.message + '</div>'; })
+        .listarMissasParaCoordenador();
+    }
+
+    function chipsHtml(ids, nomes, linha, funcao) {
+  return ids.map(function (id, i) {
+    const nome = String(nomes[i]).replace(/'/g, "\\'");
+    return '<span class="chip">' + nomes[i] +
+      '<span class="x" onclick="coordenadorRemover(' + linha + ',\'' + id + '\',\'' + funcao + '\',\'' + nome + '\')">✕</span></span>';
+  }).join('') || '<span style="color:#9c927c;">— nenhum —</span>';
+}
+    function seletorAdicionarHtml(linha, funcao, jaEscalados, atual, max) {
+      if (atual >= max) return '<div style="font-size:11px;color:#9c927c;margin-top:4px;">limite atingido</div>';
+      const idSel = 'add-' + linha + '-' + funcao.replace('á', 'a');
+      const opcoes = todasCriancas
+        .filter(function (c) { return c.funcao === funcao && jaEscalados.indexOf(String(c.id)) === -1; })
+        .map(function (c) { return '<option value="' + c.id + '">' + c.nome + '</option>'; })
+        .join('');
+      if (!opcoes) return '';
+      return '<div class="add-linha"><select id="' + idSel + '">' + opcoes + '</select>' +
+        '<button onclick="coordenadorAdicionar(' + linha + ',\'' + funcao + '\',\'' + idSel + '\')">Adicionar</button></div>';
+    }
+
+    function montarMissaCoordenador(m) {
+      const div = document.createElement('div');
+      div.className = 'missa-mini';
+      const desc = (m.descricao || '').replace(/"/g, '&quot;');
+      div.innerHTML =
+        '<div class="linha1"><span>' + m.data + ' (' + m.diaSemana + ') \u00b7 ' + m.horario + '</span>' +
+        (m.abaixoMinCoroinha || m.abaixoMinCerimoniario ? '<span class="alerta">abaixo do mínimo</span>' : '') + '</div>' +
+        '<div class="missa-acoes">' +
+          '<button class="link-mini" onclick="abrirEdicaoMissa(' + m.linha + ')">editar</button>' +
+          '<button class="link-mini" style="color:var(--wine);" onclick="excluirMissaConfirmar(' + m.linha + ',\'' + m.data + '\')">excluir</button>' +
+        '</div>' +
+        '<div id="edicao-' + m.linha + '" class="edicao-missa hidden">' +
+          '<div class="grid2">' +
+            '<div class="field"><label>Horário</label><input id="edit-horario-' + m.linha + '" type="time" value="' + m.horario + '"></div>' +
+            '<div class="field"><label>Descrição</label><input id="edit-desc-' + m.linha + '" type="text" value="' + desc + '"></div>' +
+          '</div>' +
+          '<div class="grid2">' +
+            '<div class="field"><label>Mín. Coroinha</label><input id="edit-minc-' + m.linha + '" type="number" value="' + m.minCoroinha + '"></div>' +
+            '<div class="field"><label>Máx. Coroinha</label><input id="edit-maxc-' + m.linha + '" type="number" value="' + m.maxCoroinha + '"></div>' +
+          '</div>' +
+          '<div class="grid2">' +
+            '<div class="field"><label>Mín. Cerim.</label><input id="edit-mince-' + m.linha + '" type="number" value="' + m.minCerimoniario + '"></div>' +
+            '<div class="field"><label>Máx. Cerim.</label><input id="edit-maxce-' + m.linha + '" type="number" value="' + m.maxCerimoniario + '"></div>' +
+          '</div>' +
+          '<div class="missa-acoes">' +
+            '<button class="btn-linha" onclick="fecharEdicaoMissa(' + m.linha + ')">Cancelar</button>' +
+            '<button class="btn-coord" onclick="salvarEdicaoMissa(' + m.linha + ')">Salvar</button>' +
+          '</div>' +
+        '</div>' +
+        '<div style="margin-top:6px;"><b>Coroinhas (' + m.coroinhas.length + '/' + m.minCoroinha + '\u2013' + m.maxCoroinha + ')</b>' +
+        (m.coroinhas.length < m.maxCoroinha ? ' <button class="btn-whats" style="padding:3px 8px;font-size:10px;" onclick="abrirModalChamar(' + m.linha + ',\'Coroinha\',\'' + m.data + '\',\'' + m.horario + '\')">Chamar</button>' : '') +
+        '<br>' +
+        chipsHtml(m.coroinhas, m.coroinhasNomes, m.linha, 'Coroinha') +
+        seletorAdicionarHtml(m.linha, 'Coroinha', m.coroinhas, m.coroinhas.length, m.maxCoroinha) + '</div>' +
+        '<div style="margin-top:8px;"><b>Cerimoniários (' + m.cerimoniarios.length + '/' + m.minCerimoniario + '\u2013' + m.maxCerimoniario + ')</b>' +
+        (m.cerimoniarios.length < m.maxCerimoniario ? ' <button class="btn-whats" style="padding:3px 8px;font-size:10px;" onclick="abrirModalChamar(' + m.linha + ',\'Cerimoniário\',\'' + m.data + '\',\'' + m.horario + '\')">Chamar</button>' : '') +
+        '<br>' +
+        chipsHtml(m.cerimoniarios, m.cerimoniariosNomes, m.linha, 'Cerimoniário') +
+        seletorAdicionarHtml(m.linha, 'Cerimoniário', m.cerimoniarios, m.cerimoniarios.length, m.maxCerimoniario) + '</div>';
+        '<div style="margin-top:8px;"><b>Cerimoniários (' + m.cerimoniarios.length + '/' + m.minCerimoniario + '\u2013' + m.maxCerimoniario + ')</b><br>' +
+        chipsHtml(m.cerimoniarios, m.cerimoniariosNomes, m.linha, 'Cerimoniário') +
+        seletorAdicionarHtml(m.linha, 'Cerimoniário', m.cerimoniarios, m.cerimoniarios.length, m.maxCerimoniario) + '</div>';
+      return div;
+    }
+
+    function abrirEdicaoMissa(linha) {
+      document.getElementById('edicao-' + linha).classList.remove('hidden');
+    }
+    function fecharEdicaoMissa(linha) {
+      document.getElementById('edicao-' + linha).classList.add('hidden');
+    }
+    function salvarEdicaoMissa(linha) {
+      const dados = {
+        horario: document.getElementById('edit-horario-' + linha).value,
+        descricao: document.getElementById('edit-desc-' + linha).value,
+        minCoroinha: document.getElementById('edit-minc-' + linha).value,
+        maxCoroinha: document.getElementById('edit-maxc-' + linha).value,
+        minCerimoniario: document.getElementById('edit-mince-' + linha).value,
+        maxCerimoniario: document.getElementById('edit-maxce-' + linha).value
+      };
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res.sucesso) { alert(res.mensagem || 'Erro ao salvar.'); return; }
+          toast('Missa atualizada.');
+          carregarListaCoordenador();
+          carregarMissas();
+        })
+        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
+        .editarMissa(linha, dados);
+    }
+    function excluirMissaConfirmar(linha, dataTxt) {
+      if (!confirm('Excluir a missa de ' + dataTxt + '? Essa ação não pode ser desfeita.')) return;
+      google.script.run
+        .withSuccessHandler(function () { toast('Missa excluída.'); carregarListaCoordenador(); carregarMissas(); atualizarResumoPendencias(); })
+        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
+        .excluirMissa(linha);
+    }
+
+    function coordenadorRemover(linha, criancaId, funcao, nome) {
+      if (!confirm('Remover ' + nome + ' dessa missa?')) return;
+      google.script.run
+        .withSuccessHandler(function () { carregarListaCoordenador(); carregarMissas(); })
+        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
+        .cancelar(linha, criancaId, funcao);
+    }
+
+    function coordenadorAdicionar(linha, funcao, idSel) {
+      const criancaId = document.getElementById(idSel).value;
+      if (!criancaId) return;
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res.sucesso) { alert(res.mensagem); return; }
+          carregarListaCoordenador(); carregarMissas();
+        })
+        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
+        .inscrever(linha, criancaId, funcao);
+    }
+
+    function enviarLembretesAgora() {
+      const msgEl = document.getElementById('msg-lembretes');
+      msgEl.textContent = 'Enviando…';
+      google.script.run
+        .withSuccessHandler(function (res) { msgEl.textContent = 'Lembretes enviados para ' + res.avisados + ' responsável(is).'; })
+        .withFailureHandler(function (err) { msgEl.textContent = 'Erro: ' + err.message; })
+        .enviarLembretes();
+    }
+
+    function formatarDataLocal(dataObj) {
+      const dd = String(dataObj.getDate()).padStart(2, '0');
+      const mm = String(dataObj.getMonth() + 1).padStart(2, '0');
+      return dd + '/' + mm + '/' + dataObj.getFullYear();
+    }
+
+    function mudarMes(delta) {
+      mesAtual.setMonth(mesAtual.getMonth() + delta);
+      renderCalendario();
+    }
+
+    function renderCalendario() {
+      const grid = document.getElementById('cal-grid');
+      const rotulo = document.getElementById('cal-mes-ano');
+      const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+      rotulo.textContent = meses[mesAtual.getMonth()] + ' de ' + mesAtual.getFullYear();
+
+      const crianca = criancaAtual();
+      const diasComVaga = {};
+      if (crianca) {
+        missas.forEach(function (m) {
+          const listaFuncao = crianca.funcao === 'Coroinha' ? m.coroinhas : m.cerimoniarios;
+          const maxFuncao = crianca.funcao === 'Coroinha' ? m.maxCoroinha : m.maxCerimoniario;
+          const jaEscalado = listaFuncao.includes(String(crianca.id));
+          if (!jaEscalado && listaFuncao.length < maxFuncao) diasComVaga[m.data] = true;
+        });
+      }
+
+      const primeiroDiaSemana = new Date(mesAtual.getFullYear(), mesAtual.getMonth(), 1).getDay();
+      const totalDias = new Date(mesAtual.getFullYear(), mesAtual.getMonth() + 1, 0).getDate();
+      const hojeStr = formatarDataLocal(new Date());
+
+      grid.innerHTML = '';
+      for (let i = 0; i < primeiroDiaSemana; i++) {
+        const vazio = document.createElement('div');
+        vazio.className = 'cal-dia vazio';
+        grid.appendChild(vazio);
+      }
+      for (let d = 1; d <= totalDias; d++) {
+        const dataStr = formatarDataLocal(new Date(mesAtual.getFullYear(), mesAtual.getMonth(), d));
+        const el = document.createElement('div');
+        el.className = 'cal-dia';
+        if (diasComVaga[dataStr]) el.classList.add('com-vaga');
+        if (dataStr === hojeStr) el.classList.add('hoje');
+        if (dataStr === diaSelecionado) el.classList.add('selecionado');
+        el.textContent = d;
+        if (diasComVaga[dataStr]) {
+          el.onclick = function () { diaSelecionado = dataStr; renderCalendario(); renderDisponiveis(); };
+        }
+        grid.appendChild(el);
+      }
+    }
+    function carregarDashboard() {
+      document.getElementById('dash-alertas').innerHTML = '';
+      document.getElementById('dash-proxima').innerHTML = '<div class="vazio">Carregando…</div>';
+      google.script.run
+        .withSuccessHandler(renderDashboard)
+        .withFailureHandler(function (err) {
+          document.getElementById('dash-proxima').innerHTML = '<div class="vazio">Erro: ' + err.message + '</div>';
+        })
+        .obterResumoCoordenador();
+    }
+
+    function renderDashboard(res) {
+      document.getElementById('dash-num-abaixo').textContent = res.totalMissasAbaixoMin;
+      document.getElementById('dash-card-abaixo').classList.toggle('critico', res.totalMissasAbaixoMin > 0);
+      document.getElementById('dash-num-vagas7').textContent = res.vagasAbertas7dias;
+      document.getElementById('dash-num-ocupacao').textContent = res.taxaOcupacao + '%';
+      document.getElementById('dash-num-criancas').textContent = (res.totalCoroinhas + res.totalCerimoniarios);
+
+      const alertasEl = document.getElementById('dash-alertas');
+      alertasEl.innerHTML = res.alertasUrgentes.map(function (a) {
+        let botoes = '';
+        if (a.coroinhas < a.maxCoroinha) {
+          botoes += '<button class="btn-whats" onclick="abrirModalChamar(' + a.linha + ',\'Coroinha\',\'' + a.data + '\',\'' + a.horario + '\')">Chamar Coroinha</button> ';
+        }
+        if (a.cerimoniarios < a.maxCerimoniario) {
+          botoes += '<button class="btn-whats" onclick="abrirModalChamar(' + a.linha + ',\'Cerimoniário\',\'' + a.data + '\',\'' + a.horario + '\')">Chamar Cerimoniário</button>';
+        }
+        return '<div class="dash-alerta"><b>⚠ ' + a.data + ' (' + a.diaSemana + ') \u00b7 ' + a.horario + '</b>' +
+          'Só ' + a.ocupacaoPct + '% preenchida — Coroinhas ' + a.coroinhas + '/' + a.maxCoroinha +
+          ' \u00b7 Cerimoniários ' + a.cerimoniarios + '/' + a.maxCerimoniario +
+          '<div style="margin-top:6px;">' + botoes + '</div></div>';
+      }).join('');
+
+      const proxEl = document.getElementById('dash-proxima');
+      if (!res.proximaMissa) {
+        proxEl.innerHTML = '<div class="vazio">Nenhuma missa futura cadastrada.</div>';
+        return;
+      }
+      const p = res.proximaMissa;
+      proxEl.innerHTML =
+        '<div class="dash-proxima-card">' +
+          '<div class="data">' + p.data + '</div>' +
+          '<div class="hora">' + p.diaSemana + ' \u00b7 ' + p.horario + (p.descricao ? ' \u00b7 ' + p.descricao : '') + '</div>' +
+          '<div>Coroinhas: ' + p.coroinhas + '/' + p.minCoroinha + '\u2013' + p.maxCoroinha + '</div>' +
+          '<div>Cerimoniários: ' + p.cerimoniarios + '/' + p.minCerimoniario + '\u2013' + p.maxCerimoniario + '</div>' +
+        '</div>';
+    }
+
+    function abrirModalChamar(linha, funcao, dataTxt, horarioTxt) {
+      document.getElementById('modal-chamar').classList.remove('hidden');
+      document.getElementById('chamar-titulo').textContent = funcao + ' \u00b7 ' + dataTxt + ' \u00b7 ' + horarioTxt;
+      document.getElementById('chamar-lista').innerHTML = '<div class="vazio">Carregando…</div>';
+      google.script.run
+        .withSuccessHandler(renderChamarLista)
+        .withFailureHandler(function (err) {
+          document.getElementById('chamar-lista').innerHTML = '<div class="vazio">Erro: ' + err.message + '</div>';
+        })
+        .obterResponsaveisParaChamar(linha, funcao);
+    }
+    function fecharModalChamar() {
+      document.getElementById('modal-chamar').classList.add('hidden');
+    }
+    function renderChamarLista(lista) {
+      const cont = document.getElementById('chamar-lista');
+      if (lista.length === 0) {
+        cont.innerHTML = '<div class="vazio">Nenhuma criança livre encontrada para essa função no momento.</div>';
+        return;
+      }
+      cont.innerHTML = '';
+      lista.forEach(function (item) {
+        const div = document.createElement('div');
+        div.className = 'chamar-item';
+        div.innerHTML =
+          '<div class="info"><b>' + item.criancaNome + '</b><span>Responsável: ' + item.responsavelNome + '</span></div>' +
+          (item.semCelular
+            ? '<span class="chamar-sem-celular">sem celular cadastrado</span>'
+            : '<a class="chamar-link" href="' + item.link + '" target="_blank">Abrir WhatsApp</a>');
+        cont.appendChild(div);
+      });
+    }
+
+  </script>
+</body>
+</html>
