@@ -330,12 +330,22 @@
 
   <script>
     var TOKEN_RESET = "<?= tokenReset ?>";
-    var sessao = null;
+    var sessao = null; // resposta do login/validarSessao (inclui .token)
     var missas = [];
     var filhosCadastro = [];
     var DIAS_SEMANA_TXT = { domingo:'Domingo', segunda:'Segunda', terca:'Terça', quarta:'Quarta', quinta:'Quinta', sexta:'Sexta', sabado:'Sábado' };
     var mesAtual = new Date(); mesAtual.setDate(1);
     var diaSelecionado = null;
+    var SENHA_MINIMA = 6;
+
+    /* ---------- Segurança de saída: nunca montar HTML com texto cru ---------- */
+    function esc(s) {
+      return String(s === null || s === undefined ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    /** Argumento de texto seguro para usar dentro de onclick="..." */
+    function jsArg(s) { return esc(JSON.stringify(String(s === null || s === undefined ? '' : s))); }
 
     window.onload = function () {
       if (TOKEN_RESET) { mostrarTela('tela-redefinir'); return; }
@@ -362,37 +372,64 @@
       setTimeout(function () { t.remove(); }, 2200);
     }
 
-    /* ---------- Sessão local (60 dias) ---------- */
-    function salvarSessao(usuario, senha) {
+    /* ---------- Sessão local: guarda só o token (nunca a senha) ---------- */
+    function salvarToken(token) {
       try {
-        localStorage.setItem('escala_usuario', usuario);
-        localStorage.setItem('escala_senha', senha);
+        localStorage.setItem('escala_token', token);
         localStorage.setItem('escala_ts', String(Date.now()));
+        // remove restos de versões antigas, que guardavam a senha no aparelho
+        localStorage.removeItem('escala_usuario');
+        localStorage.removeItem('escala_senha');
       } catch (e) {}
+    }
+    function lerToken() {
+      try { return localStorage.getItem('escala_token') || ''; } catch (e) { return ''; }
     }
     function limparSessao() {
       try {
-        localStorage.removeItem('escala_usuario');
-        localStorage.removeItem('escala_senha');
-        localStorage.removeItem('escala_ts');
+        ['escala_token', 'escala_ts', 'escala_usuario', 'escala_senha'].forEach(function (k) {
+          localStorage.removeItem(k);
+        });
       } catch (e) {}
     }
+    /** Se o servidor recusou o token, volta para o login. Devolve true quando tratou. */
+    function sessaoExpirou(err) {
+      if (err && /SESSAO_INVALIDA/.test(String(err.message || err))) {
+        sair();
+        toast('Sua sessão expirou. Entre novamente.');
+        return true;
+      }
+      return false;
+    }
     function tentarSessaoSalva() {
+      const token = lerToken();
+      if (token) {
+        google.script.run
+          .withSuccessHandler(function (res) {
+            if (res && res.sucesso) { salvarToken(res.token); entrarComSessao(res); }
+            else { limparSessao(); mostrarTela('tela-login'); }
+          })
+          .withFailureHandler(function () { mostrarTela('tela-login'); })
+          .validarSessao(token);
+        return;
+      }
+
+      // Migração única: aparelhos que ainda têm usuário+senha de versões antigas
+      var usuario = '', senha = '';
       try {
-        const usuario = localStorage.getItem('escala_usuario');
-        const senha = localStorage.getItem('escala_senha');
-        const ts = Number(localStorage.getItem('escala_ts') || 0);
-        const limiteMs = 60 * 24 * 60 * 60 * 1000;
-        if (usuario && senha && (Date.now() - ts) < limiteMs) {
-          google.script.run
-            .withSuccessHandler(function (res) {
-              if (res.sucesso) { entrarComSessao(res); } else { limparSessao(); mostrarTela('tela-login'); }
-            })
-            .withFailureHandler(function () { mostrarTela('tela-login'); })
-            .validarLogin(usuario, senha);
-          return;
-        }
+        usuario = localStorage.getItem('escala_usuario') || '';
+        senha = localStorage.getItem('escala_senha') || '';
       } catch (e) {}
+      if (usuario && senha) {
+        google.script.run
+          .withSuccessHandler(function (res) {
+            if (res && res.sucesso) { salvarToken(res.token); entrarComSessao(res); }
+            else { limparSessao(); mostrarTela('tela-login'); }
+          })
+          .withFailureHandler(function () { mostrarTela('tela-login'); })
+          .validarLogin(usuario, senha);
+        return;
+      }
       mostrarTela('tela-login');
     }
 
@@ -407,7 +444,8 @@
       google.script.run
         .withSuccessHandler(function (res) {
           if (!res.sucesso) { erroEl.textContent = res.mensagem; return; }
-          salvarSessao(usuario, senha);
+          salvarToken(res.token);
+          document.getElementById('in-senha').value = '';
           entrarComSessao(res);
         })
         .withFailureHandler(function (err) { erroEl.textContent = 'Erro: ' + err.message; })
@@ -415,30 +453,25 @@
     }
 
     function entrarComSessao(res) {
-  sessao = res;
-  montarSeletorCriancas();
-  document.getElementById('link-painel-coordenador').classList.toggle('hidden', !sessao.coordenador);
-  mostrarTela('tela-agenda');
-  carregarMissas();
-  if (sessao.coordenador) atualizarResumoPendencias();
-}
+      sessao = res;
+      montarSeletorCriancas();
+      document.getElementById('link-painel-coordenador').classList.toggle('hidden', !sessao.coordenador);
+      mostrarTela('tela-agenda');
+      carregarMissas();
+      if (sessao.coordenador) atualizarResumoPendencias();
+    }
 
-function atualizarResumoPendencias() {
-  if (!sessao || !sessao.coordenador) return;
-  google.script.run
-    .withSuccessHandler(function (res) {
-      const abaixo = res.filter(function (m) { return m.abaixoMinCoroinha || m.abaixoMinCerimoniario; }).length;
-      document.getElementById('painel-cta-sub').textContent =
-        abaixo > 0 ? (abaixo + ' missa(s) abaixo do mínimo') : 'Gerenciar missas e escalas';
-    })
-    .withFailureHandler(function () {})
-    .listarMissasParaCoordenador();
-}
-
-function fecharPainelCoordenador() {
-  document.getElementById('modal-coordenador').classList.add('hidden');
-  atualizarResumoPendencias();
-}
+    function atualizarResumoPendencias() {
+      if (!sessao || !sessao.coordenador) return;
+      google.script.run
+        .withSuccessHandler(function (res) {
+          const abaixo = res.filter(function (m) { return m.abaixoMinCoroinha || m.abaixoMinCerimoniario; }).length;
+          document.getElementById('link-painel-coordenador').textContent =
+            abaixo > 0 ? ('Painel do Coordenador · ' + abaixo + ' pendente(s)') : 'Painel do Coordenador';
+        })
+        .withFailureHandler(function (err) { sessaoExpirou(err); })
+        .listarMissasParaCoordenador(sessao.token);
+    }
 
     function montarSeletorCriancas() {
       const sel = document.getElementById('sel-crianca');
@@ -454,6 +487,10 @@ function fecharPainelCoordenador() {
       sessao = null;
       limparSessao();
       document.getElementById('in-senha').value = '';
+      ['modal-coordenador', 'modal-chamar'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
       mostrarTela('tela-login');
     }
 
@@ -475,7 +512,14 @@ function fecharPainelCoordenador() {
       ul.innerHTML = '';
       filhosCadastro.forEach(function (f, i) {
         const li = document.createElement('li');
-        li.innerHTML = '<span>' + f.nome + ' — ' + f.funcao + '</span><span class="remover" onclick="removerFilho(' + i + ')">remover</span>';
+        const txt = document.createElement('span');
+        txt.textContent = f.nome + ' — ' + f.funcao;
+        const rem = document.createElement('span');
+        rem.className = 'remover';
+        rem.textContent = 'remover';
+        rem.onclick = function () { removerFilho(i); };
+        li.appendChild(txt);
+        li.appendChild(rem);
         ul.appendChild(li);
       });
     }
@@ -490,12 +534,13 @@ function fecharPainelCoordenador() {
         filhos: filhosCadastro
       };
       if (!dados.nome || !dados.email || !dados.senha) { erroEl.textContent = 'Preencha nome, e-mail e senha.'; return; }
+      if (dados.senha.length < SENHA_MINIMA) { erroEl.textContent = 'A senha deve ter ao menos ' + SENHA_MINIMA + ' caracteres.'; return; }
       if (filhosCadastro.length === 0) { erroEl.textContent = 'Adicione ao menos um filho.'; return; }
 
       google.script.run
         .withSuccessHandler(function (res) {
           if (!res.sucesso) { erroEl.textContent = res.mensagem; return; }
-          salvarSessao(res.usuario, dados.senha);
+          salvarToken(res.token);
           toast('Cadastro concluído! Usuário: ' + res.usuario);
           entrarComSessao(res);
         })
@@ -522,7 +567,7 @@ function fecharPainelCoordenador() {
       const s2 = document.getElementById('red-senha2').value;
       const erroEl = document.getElementById('erro-redefinir');
       erroEl.textContent = '';
-      if (s1.length < 4) { erroEl.textContent = 'A senha deve ter ao menos 4 caracteres.'; return; }
+      if (s1.length < SENHA_MINIMA) { erroEl.textContent = 'A senha deve ter ao menos ' + SENHA_MINIMA + ' caracteres.'; return; }
       if (s1 !== s2) { erroEl.textContent = 'As senhas não conferem.'; return; }
 
       google.script.run
@@ -540,9 +585,10 @@ function fecharPainelCoordenador() {
       google.script.run
         .withSuccessHandler(function (res) { missas = res; renderMissas(); })
         .withFailureHandler(function (err) {
-          document.getElementById('lista-missas').innerHTML = '<div class="vazio">Erro ao carregar: ' + err.message + '</div>';
+          if (sessaoExpirou(err)) return;
+          document.getElementById('lista-missas').innerHTML = '<div class="vazio">Erro ao carregar: ' + esc(err.message) + '</div>';
         })
-        .listarMissas();
+        .listarMissas(sessao.token);
     }
 
     function criancaAtual() {
@@ -578,9 +624,9 @@ function fecharPainelCoordenador() {
         const div = document.createElement('div');
         div.className = 'compromisso-card';
         div.innerHTML =
-          '<div class="info"><b>' + c.crianca.nome + '</b>' +
-          '<span>' + c.crianca.funcao + ' \u00b7 ' + c.missa.data + ' (' + c.missa.diaSemana + ') \u00b7 ' + c.missa.horario + '</span></div>' +
-          '<button onclick="cancelarInscricaoDireto(' + c.missa.linha + ',\'' + c.crianca.id + '\',\'' + c.crianca.funcao + '\',\'' + c.crianca.nome.replace(/'/g, "\\'") + '\')">Cancelar</button>';
+          '<div class="info"><b>' + esc(c.crianca.nome) + '</b>' +
+          '<span>' + esc(c.crianca.funcao) + ' · ' + esc(c.missa.data) + ' (' + esc(c.missa.diaSemana) + ') · ' + esc(c.missa.horario) + '</span></div>' +
+          '<button onclick="cancelarInscricaoDireto(' + Number(c.missa.linha) + ',' + jsArg(c.crianca.id) + ',' + jsArg(c.crianca.funcao) + ',' + jsArg(c.crianca.nome) + ')">Cancelar</button>';
         cont.appendChild(div);
       });
     }
@@ -606,7 +652,7 @@ function fecharPainelCoordenador() {
       });
 
       if (disponiveis.length === 0) {
-        cont.innerHTML = '<div class="vazio">Nenhuma vaga disponível em ' + diaSelecionado + ' para ' + crianca.nome + '.</div>';
+        cont.innerHTML = '<div class="vazio">Nenhuma vaga disponível em ' + esc(diaSelecionado) + ' para ' + esc(crianca.nome) + '.</div>';
         return;
       }
 
@@ -618,17 +664,17 @@ function fecharPainelCoordenador() {
           const abaixoMin = lista.length < min;
           const aviso = abaixoMin ? '<span class="aviso">faltam ' + (min - lista.length) + '</span>' : '';
           return '<div class="badge ' + classe + (abaixoMin ? ' abaixo-min' : '') + '">' +
-            '<b>' + lista.length + ' / ' + min + '\u2013' + max + '</b>' + rotulo + aviso + '</div>';
+            '<b>' + lista.length + ' / ' + min + '–' + max + '</b>' + rotulo + aviso + '</div>';
         }
         card.innerHTML =
-          '<div class="data">' + m.data + '</div>' +
-          '<div class="hora">' + m.diaSemana + ' \u00b7 ' + m.horario + '</div>' +
-          (m.descricao ? '<div class="desc">' + m.descricao + '</div>' : '') +
+          '<div class="data">' + esc(m.data) + '</div>' +
+          '<div class="hora">' + esc(m.diaSemana) + ' · ' + esc(m.horario) + '</div>' +
+          (m.descricao ? '<div class="desc">' + esc(m.descricao) + '</div>' : '') +
           '<div class="badges">' +
-            badgeHtml('Coroinha', 'coroinha', m.minCoroinha, m.maxCoroinha, m.coroinhas) +
-            badgeHtml('Cerimoniário', 'cerim', m.minCerimoniario, m.maxCerimoniario, m.cerimoniarios) +
+            badgeHtml('Coroinha', 'coroinha', Number(m.minCoroinha), Number(m.maxCoroinha), m.coroinhas) +
+            badgeHtml('Cerimoniário', 'cerim', Number(m.minCerimoniario), Number(m.maxCerimoniario), m.cerimoniarios) +
           '</div>' +
-          '<div class="acao"><button class="servir" onclick="inscreverMissa(' + m.linha + ')">Servir nesta missa</button></div>';
+          '<div class="acao"><button class="servir" onclick="inscreverMissa(' + Number(m.linha) + ')">Servir nesta missa</button></div>';
         cont.appendChild(card);
       });
     }
@@ -636,9 +682,13 @@ function fecharPainelCoordenador() {
     function cancelarInscricaoDireto(linha, criancaId, funcao, nome) {
       if (!confirm('Cancelar a inscrição de ' + nome + ' nessa missa?')) return;
       google.script.run
-        .withSuccessHandler(function () { toast('Inscrição cancelada.'); carregarMissas(); })
-        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
-        .cancelar(linha, criancaId, funcao);
+        .withSuccessHandler(function (res) {
+          if (res && res.sucesso === false) { alert(res.mensagem || 'Não foi possível cancelar.'); return; }
+          toast('Inscrição cancelada.');
+          carregarMissas();
+        })
+        .withFailureHandler(function (err) { if (!sessaoExpirou(err)) alert('Erro: ' + err.message); })
+        .cancelar(sessao.token, linha, criancaId, funcao);
     }
 
     function inscreverMissa(linha) {
@@ -649,8 +699,8 @@ function fecharPainelCoordenador() {
           toast('Escalado com sucesso!');
           carregarMissas();
         })
-        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
-        .inscrever(linha, crianca.id, crianca.funcao);
+        .withFailureHandler(function (err) { if (!sessaoExpirou(err)) alert('Erro: ' + err.message); })
+        .inscrever(sessao.token, linha, crianca.id, crianca.funcao);
     }
 
     /* ---------- Painel do coordenador ---------- */
@@ -667,12 +717,16 @@ function fecharPainelCoordenador() {
 
     function abrirPainelCoordenador() {
       document.getElementById('modal-coordenador').classList.remove('hidden');
-      google.script.run.withSuccessHandler(function (res) { todasCriancas = res; }).listarCriancas();
+      google.script.run
+        .withSuccessHandler(function (res) { todasCriancas = res; })
+        .withFailureHandler(function (err) { sessaoExpirou(err); })
+        .listarCriancas(sessao.token);
       trocarAbaCoordenador('geral');
     }
 
     function fecharPainelCoordenador() {
       document.getElementById('modal-coordenador').classList.add('hidden');
+      atualizarResumoPendencias();
     }
 
     function gerarRecorrentes() {
@@ -694,8 +748,8 @@ function fecharPainelCoordenador() {
           carregarListaCoordenador();
           carregarMissas();
         })
-        .withFailureHandler(function (err) { msgEl.textContent = 'Erro: ' + err.message; })
-        .gerarMissasRecorrentes(config);
+        .withFailureHandler(function (err) { if (!sessaoExpirou(err)) msgEl.textContent = 'Erro: ' + err.message; })
+        .gerarMissasRecorrentes(sessao.token, config);
     }
 
     function carregarListaCoordenador() {
@@ -707,71 +761,71 @@ function fecharPainelCoordenador() {
           cont.innerHTML = '';
           res.forEach(function (m) { cont.appendChild(montarMissaCoordenador(m)); });
         })
-        .withFailureHandler(function (err) { cont.innerHTML = '<div class="vazio">Erro: ' + err.message + '</div>'; })
-        .listarMissasParaCoordenador();
+        .withFailureHandler(function (err) {
+          if (sessaoExpirou(err)) return;
+          cont.innerHTML = '<div class="vazio">Erro: ' + esc(err.message) + '</div>';
+        })
+        .listarMissasParaCoordenador(sessao.token);
     }
 
     function chipsHtml(ids, nomes, linha, funcao) {
-  return ids.map(function (id, i) {
-    const nome = String(nomes[i]).replace(/'/g, "\\'");
-    return '<span class="chip">' + nomes[i] +
-      '<span class="x" onclick="coordenadorRemover(' + linha + ',\'' + id + '\',\'' + funcao + '\',\'' + nome + '\')">✕</span></span>';
-  }).join('') || '<span style="color:#9c927c;">— nenhum —</span>';
-}
+      return ids.map(function (id, i) {
+        return '<span class="chip">' + esc(nomes[i]) +
+          '<span class="x" onclick="coordenadorRemover(' + Number(linha) + ',' + jsArg(id) + ',' + jsArg(funcao) + ',' + jsArg(nomes[i]) + ')">✕</span></span>';
+      }).join('') || '<span style="color:#9c927c;">— nenhum —</span>';
+    }
+
     function seletorAdicionarHtml(linha, funcao, jaEscalados, atual, max) {
       if (atual >= max) return '<div style="font-size:11px;color:#9c927c;margin-top:4px;">limite atingido</div>';
-      const idSel = 'add-' + linha + '-' + funcao.replace('á', 'a');
+      const idSel = 'add-' + Number(linha) + '-' + funcao.replace('á', 'a');
       const opcoes = todasCriancas
         .filter(function (c) { return c.funcao === funcao && jaEscalados.indexOf(String(c.id)) === -1; })
-        .map(function (c) { return '<option value="' + c.id + '">' + c.nome + '</option>'; })
+        .map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.nome) + '</option>'; })
         .join('');
       if (!opcoes) return '';
       return '<div class="add-linha"><select id="' + idSel + '">' + opcoes + '</select>' +
-        '<button onclick="coordenadorAdicionar(' + linha + ',\'' + funcao + '\',\'' + idSel + '\')">Adicionar</button></div>';
+        '<button onclick="coordenadorAdicionar(' + Number(linha) + ',' + jsArg(funcao) + ',' + jsArg(idSel) + ')">Adicionar</button></div>';
     }
 
     function montarMissaCoordenador(m) {
       const div = document.createElement('div');
       div.className = 'missa-mini';
-      const desc = (m.descricao || '').replace(/"/g, '&quot;');
+      const linha = Number(m.linha);
       div.innerHTML =
-        '<div class="linha1"><span>' + m.data + ' (' + m.diaSemana + ') \u00b7 ' + m.horario + '</span>' +
+        '<div class="linha1"><span>' + esc(m.data) + ' (' + esc(m.diaSemana) + ') · ' + esc(m.horario) + '</span>' +
         (m.abaixoMinCoroinha || m.abaixoMinCerimoniario ? '<span class="alerta">abaixo do mínimo</span>' : '') + '</div>' +
         '<div class="missa-acoes">' +
-          '<button class="link-mini" onclick="abrirEdicaoMissa(' + m.linha + ')">editar</button>' +
-          '<button class="link-mini" style="color:var(--wine);" onclick="excluirMissaConfirmar(' + m.linha + ',\'' + m.data + '\')">excluir</button>' +
+          '<button class="link-mini" onclick="abrirEdicaoMissa(' + linha + ')">editar</button>' +
+          '<button class="link-mini" style="color:var(--wine);" onclick="excluirMissaConfirmar(' + linha + ',' + jsArg(m.data) + ')">excluir</button>' +
         '</div>' +
-        '<div id="edicao-' + m.linha + '" class="edicao-missa hidden">' +
+        '<div id="edicao-' + linha + '" class="edicao-missa hidden">' +
           '<div class="grid2">' +
-            '<div class="field"><label>Horário</label><input id="edit-horario-' + m.linha + '" type="time" value="' + m.horario + '"></div>' +
-            '<div class="field"><label>Descrição</label><input id="edit-desc-' + m.linha + '" type="text" value="' + desc + '"></div>' +
+            '<div class="field"><label>Horário</label><input id="edit-horario-' + linha + '" type="time" value="' + esc(m.horario) + '"></div>' +
+            '<div class="field"><label>Descrição</label><input id="edit-desc-' + linha + '" type="text" value="' + esc(m.descricao || '') + '"></div>' +
           '</div>' +
           '<div class="grid2">' +
-            '<div class="field"><label>Mín. Coroinha</label><input id="edit-minc-' + m.linha + '" type="number" value="' + m.minCoroinha + '"></div>' +
-            '<div class="field"><label>Máx. Coroinha</label><input id="edit-maxc-' + m.linha + '" type="number" value="' + m.maxCoroinha + '"></div>' +
+            '<div class="field"><label>Mín. Coroinha</label><input id="edit-minc-' + linha + '" type="number" value="' + Number(m.minCoroinha) + '"></div>' +
+            '<div class="field"><label>Máx. Coroinha</label><input id="edit-maxc-' + linha + '" type="number" value="' + Number(m.maxCoroinha) + '"></div>' +
           '</div>' +
           '<div class="grid2">' +
-            '<div class="field"><label>Mín. Cerim.</label><input id="edit-mince-' + m.linha + '" type="number" value="' + m.minCerimoniario + '"></div>' +
-            '<div class="field"><label>Máx. Cerim.</label><input id="edit-maxce-' + m.linha + '" type="number" value="' + m.maxCerimoniario + '"></div>' +
+            '<div class="field"><label>Mín. Cerim.</label><input id="edit-mince-' + linha + '" type="number" value="' + Number(m.minCerimoniario) + '"></div>' +
+            '<div class="field"><label>Máx. Cerim.</label><input id="edit-maxce-' + linha + '" type="number" value="' + Number(m.maxCerimoniario) + '"></div>' +
           '</div>' +
           '<div class="missa-acoes">' +
-            '<button class="btn-linha" onclick="fecharEdicaoMissa(' + m.linha + ')">Cancelar</button>' +
-            '<button class="btn-coord" onclick="salvarEdicaoMissa(' + m.linha + ')">Salvar</button>' +
+            '<button class="btn-linha" onclick="fecharEdicaoMissa(' + linha + ')">Cancelar</button>' +
+            '<button class="btn-coord" onclick="salvarEdicaoMissa(' + linha + ')">Salvar</button>' +
           '</div>' +
         '</div>' +
-        '<div style="margin-top:6px;"><b>Coroinhas (' + m.coroinhas.length + '/' + m.minCoroinha + '\u2013' + m.maxCoroinha + ')</b>' +
-        (m.coroinhas.length < m.maxCoroinha ? ' <button class="btn-whats" style="padding:3px 8px;font-size:10px;" onclick="abrirModalChamar(' + m.linha + ',\'Coroinha\',\'' + m.data + '\',\'' + m.horario + '\')">Chamar</button>' : '') +
+        '<div style="margin-top:6px;"><b>Coroinhas (' + m.coroinhas.length + '/' + Number(m.minCoroinha) + '–' + Number(m.maxCoroinha) + ')</b>' +
+        (m.coroinhas.length < m.maxCoroinha ? ' <button class="btn-whats" style="padding:3px 8px;font-size:10px;" onclick="abrirModalChamar(' + linha + ',' + jsArg('Coroinha') + ',' + jsArg(m.data) + ',' + jsArg(m.horario) + ')">Chamar</button>' : '') +
         '<br>' +
-        chipsHtml(m.coroinhas, m.coroinhasNomes, m.linha, 'Coroinha') +
-        seletorAdicionarHtml(m.linha, 'Coroinha', m.coroinhas, m.coroinhas.length, m.maxCoroinha) + '</div>' +
-        '<div style="margin-top:8px;"><b>Cerimoniários (' + m.cerimoniarios.length + '/' + m.minCerimoniario + '\u2013' + m.maxCerimoniario + ')</b>' +
-        (m.cerimoniarios.length < m.maxCerimoniario ? ' <button class="btn-whats" style="padding:3px 8px;font-size:10px;" onclick="abrirModalChamar(' + m.linha + ',\'Cerimoniário\',\'' + m.data + '\',\'' + m.horario + '\')">Chamar</button>' : '') +
+        chipsHtml(m.coroinhas, m.coroinhasNomes, linha, 'Coroinha') +
+        seletorAdicionarHtml(linha, 'Coroinha', m.coroinhas, m.coroinhas.length, m.maxCoroinha) + '</div>' +
+        '<div style="margin-top:8px;"><b>Cerimoniários (' + m.cerimoniarios.length + '/' + Number(m.minCerimoniario) + '–' + Number(m.maxCerimoniario) + ')</b>' +
+        (m.cerimoniarios.length < m.maxCerimoniario ? ' <button class="btn-whats" style="padding:3px 8px;font-size:10px;" onclick="abrirModalChamar(' + linha + ',' + jsArg('Cerimoniário') + ',' + jsArg(m.data) + ',' + jsArg(m.horario) + ')">Chamar</button>' : '') +
         '<br>' +
-        chipsHtml(m.cerimoniarios, m.cerimoniariosNomes, m.linha, 'Cerimoniário') +
-        seletorAdicionarHtml(m.linha, 'Cerimoniário', m.cerimoniarios, m.cerimoniarios.length, m.maxCerimoniario) + '</div>';
-        '<div style="margin-top:8px;"><b>Cerimoniários (' + m.cerimoniarios.length + '/' + m.minCerimoniario + '\u2013' + m.maxCerimoniario + ')</b><br>' +
-        chipsHtml(m.cerimoniarios, m.cerimoniariosNomes, m.linha, 'Cerimoniário') +
-        seletorAdicionarHtml(m.linha, 'Cerimoniário', m.cerimoniarios, m.cerimoniarios.length, m.maxCerimoniario) + '</div>';
+        chipsHtml(m.cerimoniarios, m.cerimoniariosNomes, linha, 'Cerimoniário') +
+        seletorAdicionarHtml(linha, 'Cerimoniário', m.cerimoniarios, m.cerimoniarios.length, m.maxCerimoniario) + '</div>';
       return div;
     }
 
@@ -797,23 +851,33 @@ function fecharPainelCoordenador() {
           carregarListaCoordenador();
           carregarMissas();
         })
-        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
-        .editarMissa(linha, dados);
+        .withFailureHandler(function (err) { if (!sessaoExpirou(err)) alert('Erro: ' + err.message); })
+        .editarMissa(sessao.token, linha, dados);
     }
     function excluirMissaConfirmar(linha, dataTxt) {
       if (!confirm('Excluir a missa de ' + dataTxt + '? Essa ação não pode ser desfeita.')) return;
       google.script.run
-        .withSuccessHandler(function () { toast('Missa excluída.'); carregarListaCoordenador(); carregarMissas(); atualizarResumoPendencias(); })
-        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
-        .excluirMissa(linha);
+        .withSuccessHandler(function (res) {
+          if (!res.sucesso) { alert(res.mensagem || 'Não foi possível excluir.'); carregarListaCoordenador(); return; }
+          toast('Missa excluída.');
+          carregarListaCoordenador();
+          carregarMissas();
+          atualizarResumoPendencias();
+        })
+        .withFailureHandler(function (err) { if (!sessaoExpirou(err)) alert('Erro: ' + err.message); })
+        .excluirMissa(sessao.token, linha, dataTxt);
     }
 
     function coordenadorRemover(linha, criancaId, funcao, nome) {
       if (!confirm('Remover ' + nome + ' dessa missa?')) return;
       google.script.run
-        .withSuccessHandler(function () { carregarListaCoordenador(); carregarMissas(); })
-        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
-        .cancelar(linha, criancaId, funcao);
+        .withSuccessHandler(function (res) {
+          if (res && res.sucesso === false) { alert(res.mensagem || 'Não foi possível remover.'); return; }
+          carregarListaCoordenador();
+          carregarMissas();
+        })
+        .withFailureHandler(function (err) { if (!sessaoExpirou(err)) alert('Erro: ' + err.message); })
+        .cancelar(sessao.token, linha, criancaId, funcao);
     }
 
     function coordenadorAdicionar(linha, funcao, idSel) {
@@ -824,8 +888,8 @@ function fecharPainelCoordenador() {
           if (!res.sucesso) { alert(res.mensagem); return; }
           carregarListaCoordenador(); carregarMissas();
         })
-        .withFailureHandler(function (err) { alert('Erro: ' + err.message); })
-        .inscrever(linha, criancaId, funcao);
+        .withFailureHandler(function (err) { if (!sessaoExpirou(err)) alert('Erro: ' + err.message); })
+        .inscrever(sessao.token, linha, criancaId, funcao);
     }
 
     function enviarLembretesAgora() {
@@ -833,8 +897,8 @@ function fecharPainelCoordenador() {
       msgEl.textContent = 'Enviando…';
       google.script.run
         .withSuccessHandler(function (res) { msgEl.textContent = 'Lembretes enviados para ' + res.avisados + ' responsável(is).'; })
-        .withFailureHandler(function (err) { msgEl.textContent = 'Erro: ' + err.message; })
-        .enviarLembretes();
+        .withFailureHandler(function (err) { if (!sessaoExpirou(err)) msgEl.textContent = 'Erro: ' + err.message; })
+        .enviarLembretesCoordenador(sessao.token);
     }
 
     function formatarDataLocal(dataObj) {
@@ -889,15 +953,17 @@ function fecharPainelCoordenador() {
         grid.appendChild(el);
       }
     }
+
     function carregarDashboard() {
       document.getElementById('dash-alertas').innerHTML = '';
       document.getElementById('dash-proxima').innerHTML = '<div class="vazio">Carregando…</div>';
       google.script.run
         .withSuccessHandler(renderDashboard)
         .withFailureHandler(function (err) {
-          document.getElementById('dash-proxima').innerHTML = '<div class="vazio">Erro: ' + err.message + '</div>';
+          if (sessaoExpirou(err)) return;
+          document.getElementById('dash-proxima').innerHTML = '<div class="vazio">Erro: ' + esc(err.message) + '</div>';
         })
-        .obterResumoCoordenador();
+        .obterResumoCoordenador(sessao.token);
     }
 
     function renderDashboard(res) {
@@ -911,14 +977,14 @@ function fecharPainelCoordenador() {
       alertasEl.innerHTML = res.alertasUrgentes.map(function (a) {
         let botoes = '';
         if (a.coroinhas < a.maxCoroinha) {
-          botoes += '<button class="btn-whats" onclick="abrirModalChamar(' + a.linha + ',\'Coroinha\',\'' + a.data + '\',\'' + a.horario + '\')">Chamar Coroinha</button> ';
+          botoes += '<button class="btn-whats" onclick="abrirModalChamar(' + Number(a.linha) + ',' + jsArg('Coroinha') + ',' + jsArg(a.data) + ',' + jsArg(a.horario) + ')">Chamar Coroinha</button> ';
         }
         if (a.cerimoniarios < a.maxCerimoniario) {
-          botoes += '<button class="btn-whats" onclick="abrirModalChamar(' + a.linha + ',\'Cerimoniário\',\'' + a.data + '\',\'' + a.horario + '\')">Chamar Cerimoniário</button>';
+          botoes += '<button class="btn-whats" onclick="abrirModalChamar(' + Number(a.linha) + ',' + jsArg('Cerimoniário') + ',' + jsArg(a.data) + ',' + jsArg(a.horario) + ')">Chamar Cerimoniário</button>';
         }
-        return '<div class="dash-alerta"><b>⚠ ' + a.data + ' (' + a.diaSemana + ') \u00b7 ' + a.horario + '</b>' +
-          'Só ' + a.ocupacaoPct + '% preenchida — Coroinhas ' + a.coroinhas + '/' + a.maxCoroinha +
-          ' \u00b7 Cerimoniários ' + a.cerimoniarios + '/' + a.maxCerimoniario +
+        return '<div class="dash-alerta"><b>⚠ ' + esc(a.data) + ' (' + esc(a.diaSemana) + ') · ' + esc(a.horario) + '</b>' +
+          'Só ' + Number(a.ocupacaoPct) + '% preenchida — Coroinhas ' + Number(a.coroinhas) + '/' + Number(a.maxCoroinha) +
+          ' · Cerimoniários ' + Number(a.cerimoniarios) + '/' + Number(a.maxCerimoniario) +
           '<div style="margin-top:6px;">' + botoes + '</div></div>';
       }).join('');
 
@@ -930,23 +996,24 @@ function fecharPainelCoordenador() {
       const p = res.proximaMissa;
       proxEl.innerHTML =
         '<div class="dash-proxima-card">' +
-          '<div class="data">' + p.data + '</div>' +
-          '<div class="hora">' + p.diaSemana + ' \u00b7 ' + p.horario + (p.descricao ? ' \u00b7 ' + p.descricao : '') + '</div>' +
-          '<div>Coroinhas: ' + p.coroinhas + '/' + p.minCoroinha + '\u2013' + p.maxCoroinha + '</div>' +
-          '<div>Cerimoniários: ' + p.cerimoniarios + '/' + p.minCerimoniario + '\u2013' + p.maxCerimoniario + '</div>' +
+          '<div class="data">' + esc(p.data) + '</div>' +
+          '<div class="hora">' + esc(p.diaSemana) + ' · ' + esc(p.horario) + (p.descricao ? ' · ' + esc(p.descricao) : '') + '</div>' +
+          '<div>Coroinhas: ' + Number(p.coroinhas) + '/' + Number(p.minCoroinha) + '–' + Number(p.maxCoroinha) + '</div>' +
+          '<div>Cerimoniários: ' + Number(p.cerimoniarios) + '/' + Number(p.minCerimoniario) + '–' + Number(p.maxCerimoniario) + '</div>' +
         '</div>';
     }
 
     function abrirModalChamar(linha, funcao, dataTxt, horarioTxt) {
       document.getElementById('modal-chamar').classList.remove('hidden');
-      document.getElementById('chamar-titulo').textContent = funcao + ' \u00b7 ' + dataTxt + ' \u00b7 ' + horarioTxt;
+      document.getElementById('chamar-titulo').textContent = funcao + ' · ' + dataTxt + ' · ' + horarioTxt;
       document.getElementById('chamar-lista').innerHTML = '<div class="vazio">Carregando…</div>';
       google.script.run
         .withSuccessHandler(renderChamarLista)
         .withFailureHandler(function (err) {
-          document.getElementById('chamar-lista').innerHTML = '<div class="vazio">Erro: ' + err.message + '</div>';
+          if (sessaoExpirou(err)) return;
+          document.getElementById('chamar-lista').innerHTML = '<div class="vazio">Erro: ' + esc(err.message) + '</div>';
         })
-        .obterResponsaveisParaChamar(linha, funcao);
+        .obterResponsaveisParaChamar(sessao.token, linha, funcao);
     }
     function fecharModalChamar() {
       document.getElementById('modal-chamar').classList.add('hidden');
@@ -959,13 +1026,14 @@ function fecharPainelCoordenador() {
       }
       cont.innerHTML = '';
       lista.forEach(function (item) {
+        const linkOk = typeof item.link === 'string' && item.link.indexOf('https://api.whatsapp.com/send/') === 0;
         const div = document.createElement('div');
         div.className = 'chamar-item';
         div.innerHTML =
-          '<div class="info"><b>' + item.criancaNome + '</b><span>Responsável: ' + item.responsavelNome + '</span></div>' +
-          (item.semCelular
-            ? '<span class="chamar-sem-celular">sem celular cadastrado</span>'
-            : '<a class="chamar-link" href="' + item.link + '" target="_blank">Abrir WhatsApp</a>');
+          '<div class="info"><b>' + esc(item.criancaNome) + '</b><span>Responsável: ' + esc(item.responsavelNome) + '</span></div>' +
+          (linkOk
+            ? '<a class="chamar-link" href="' + esc(item.link) + '" target="_blank" rel="noopener noreferrer">Abrir WhatsApp</a>'
+            : '<span class="chamar-sem-celular">sem celular cadastrado</span>');
         cont.appendChild(div);
       });
     }
