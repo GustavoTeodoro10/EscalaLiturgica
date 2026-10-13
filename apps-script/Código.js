@@ -61,6 +61,70 @@ function doGet(e) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* API JSON (usada pelo app Expo/web)                                     */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Única porta de entrada HTTP para dados. Só as ações desta lista existem;
+ * a autorização de cada uma (token, papel, dono da criança) vive dentro da própria função.
+ * Pedido:  POST  { "acao": "listarMissas", "args": ["<token>"] }   (Content-Type: text/plain)
+ * Resposta: { "ok": true, "dados": ... }  ou  { "ok": false, "erro": "SESSAO_INVALIDA" }
+ */
+const ACOES_API = {
+  validarLogin: validarLogin,
+  validarSessao: validarSessao,
+  cadastrarResponsavel: cadastrarResponsavel,
+  solicitarRecuperacaoSenha: solicitarRecuperacaoSenha,
+  redefinirSenha: redefinirSenha,
+  listarMissas: listarMissas,
+  inscrever: inscrever,
+  cancelar: cancelar,
+  listarCriancas: listarCriancas,
+  listarMissasParaCoordenador: listarMissasParaCoordenador,
+  obterResumoCoordenador: obterResumoCoordenador,
+  obterResponsaveisParaChamar: obterResponsaveisParaChamar,
+  gerarMissasRecorrentes: gerarMissasRecorrentes,
+  editarMissa: editarMissa,
+  excluirMissa: excluirMissa,
+  enviarLembretesCoordenador: enviarLembretesCoordenador
+};
+
+const ERROS_API_CONHECIDOS = ['SESSAO_INVALIDA', 'SEM_PERMISSAO', 'ACAO_INVALIDA', 'REQUISICAO_INVALIDA'];
+
+function codigoErroApi_(err) {
+  const msg = String(err && err.message ? err.message : err);
+  for (let i = 0; i < ERROS_API_CONHECIDOS.length; i++) {
+    if (msg.indexOf(ERROS_API_CONHECIDOS[i]) !== -1) return ERROS_API_CONHECIDOS[i];
+  }
+  console.error('Erro na API: ' + msg); // fica nos logs do Apps Script, nunca vai para o cliente
+  return 'ERRO_INTERNO';
+}
+
+function doPost(e) {
+  let resposta;
+  try {
+    const bruto = e && e.postData && e.postData.contents ? String(e.postData.contents) : '';
+    if (!bruto || bruto.length > 20000) throw new Error('REQUISICAO_INVALIDA');
+
+    let corpo;
+    try {
+      corpo = JSON.parse(bruto);
+    } catch (errJson) {
+      throw new Error('REQUISICAO_INVALIDA');
+    }
+
+    const acao = corpo && typeof corpo.acao === 'string' ? corpo.acao : '';
+    if (!Object.prototype.hasOwnProperty.call(ACOES_API, acao)) throw new Error('ACAO_INVALIDA');
+
+    const args = Array.isArray(corpo.args) ? corpo.args.slice(0, 4) : [];
+    resposta = { ok: true, dados: ACOES_API[acao].apply(null, args) };
+  } catch (err) {
+    resposta = { ok: false, erro: codigoErroApi_(err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(resposta)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ---------------------------------------------------------------------- */
 /* Funções administrativas (só rodam com PERMITIR_ADMIN = sim)            */
 /* ---------------------------------------------------------------------- */
 

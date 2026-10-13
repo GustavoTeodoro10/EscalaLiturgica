@@ -79,6 +79,13 @@ function novoAmbiente() {
     Session: { getScriptTimeZone: () => 'America/Sao_Paulo' },
     ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TESTE/exec' }) },
     MailApp: { sendEmail: (m) => emails.push(m) },
+    ContentService: {
+      MimeType: { JSON: 'JSON' },
+      createTextOutput: (txt) => ({
+        setMimeType() { return this; },
+        getContent: () => txt,
+      }),
+    },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     PropertiesService: {
       getScriptProperties: () => ({
@@ -302,6 +309,59 @@ test('funções internas (terminadas em _) não têm equivalente público', () =
   for (const perigosa of ['lerMissasBrutas', 'mapaCriancas', 'montarRespostaLogin', 'proximoId', 'gerarToken', 'hashSenha']) {
     assert.ok(!publicas.includes(perigosa), perigosa + ' não pode ser pública');
   }
+});
+
+/* ---------- API JSON (doPost) ---------- */
+
+function chamarApi(ctx, corpo) {
+  const contents = typeof corpo === 'string' ? corpo : JSON.stringify(corpo);
+  return JSON.parse(ctx.doPost({ postData: { contents } }).getContent());
+}
+
+test('doPost: login e leitura de missas funcionam pelo JSON', () => {
+  const { ctx } = novoAmbiente();
+  const login = chamarApi(ctx, { acao: 'validarLogin', args: ['Mae.Dois', 'senha22'] });
+  assert.equal(login.ok, true);
+  assert.equal(login.dados.sucesso, true);
+  assert.equal(login.dados.criancas.length, 1);
+
+  const missas = chamarApi(ctx, { acao: 'listarMissas', args: [login.dados.token] });
+  assert.equal(missas.ok, true);
+  assert.equal(missas.dados.length, 1);
+});
+
+test('doPost: só aceita ações da lista (nada administrativo nem interno)', () => {
+  const { ctx, abas } = novoAmbiente();
+  for (const acao of ['gerarDadosTeste', 'configurarPlanilha', 'lerMissasBrutas_', 'mapaCriancas_',
+    'enviarLembretes', 'doGet', 'constructor', '__proto__', 'toString', '']) {
+    const r = chamarApi(ctx, { acao, args: [] });
+    assert.deepEqual(r, { ok: false, erro: 'ACAO_INVALIDA' }, 'ação ' + acao);
+  }
+  assert.equal(abas.Missas.length, 2);
+  assert.equal(abas.Vinculos.length, 4);
+});
+
+test('doPost: erros de sessão e de permissão voltam como código, sem detalhe interno', () => {
+  const { ctx, entrar } = novoAmbiente();
+  assert.deepEqual(chamarApi(ctx, { acao: 'listarMissas', args: ['lixo'] }), { ok: false, erro: 'SESSAO_INVALIDA' });
+  const mae = entrar('Mae.Dois', 'senha22');
+  assert.deepEqual(chamarApi(ctx, { acao: 'listarCriancas', args: [mae] }), { ok: false, erro: 'SEM_PERMISSAO' });
+});
+
+test('doPost: corpo vazio, grande demais ou JSON quebrado é recusado', () => {
+  const { ctx } = novoAmbiente();
+  assert.equal(chamarApi(ctx, '').erro, 'REQUISICAO_INVALIDA');
+  assert.equal(chamarApi(ctx, '{nao e json').erro, 'REQUISICAO_INVALIDA');
+  assert.equal(chamarApi(ctx, 'x'.repeat(20001)).erro, 'REQUISICAO_INVALIDA');
+  assert.equal(chamarApi(ctx, { acao: 123 }).erro, 'ACAO_INVALIDA');
+  assert.equal(JSON.parse(ctx.doPost(undefined).getContent()).erro, 'REQUISICAO_INVALIDA');
+});
+
+test('doPost: falha inesperada vira ERRO_INTERNO sem expor a mensagem', () => {
+  const { ctx, abas } = novoAmbiente();
+  delete abas.Responsaveis; // planilha quebrada
+  const r = chamarApi(ctx, { acao: 'validarLogin', args: ['Mae.Dois', 'senha22'] });
+  assert.deepEqual(r, { ok: false, erro: 'ERRO_INTERNO' });
 });
 
 test('lembretes agendados só disparam uma vez por dia', () => {

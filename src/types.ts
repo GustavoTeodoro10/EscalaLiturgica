@@ -1,14 +1,6 @@
-// Modelo de domínio — espelha as planilhas do app atual (Google Sheets).
+// Formatos devolvidos pela API do Apps Script (apps-script/Código.js).
 
 export type Funcao = 'Coroinha' | 'Cerimoniário';
-
-export type Responsavel = {
-  id: string; // R001…
-  nome: string;
-  email: string;
-  celular: string;
-  coordenador: boolean;
-};
 
 export type Crianca = {
   id: string; // C001…
@@ -16,10 +8,23 @@ export type Crianca = {
   funcao: Funcao;
 };
 
+export type Sessao = {
+  token: string;
+  responsavelId: string; // R001…
+  responsavel: string;
+  coordenador: boolean;
+  criancas: Crianca[];
+};
+
 export type Missa = {
-  data: string; // yyyy-MM-dd
+  linha: number; // linha na planilha: identifica a missa nas chamadas de escrita
+  data: string; // dd/MM/yyyy
   horario: string; // HH:mm
   descricao: string;
-  coroinhas: { min: number; max: number; escalados: string[] }; // ids de Crianca
-  cerimoniarios: { min: number; max: number; escalados: string[] };
+  minCoroinha: number;
+  maxCoroinha: number;
+  coroinhas: string[]; // ids de Crianca escaladas
+  minCerimoniario: number;
+  maxCerimoniario: number;
+  cerimoniarios: string[];
 };

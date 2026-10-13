@@ -12,8 +12,11 @@ import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useSession } from '@/hooks/use-session';
 
 export default function AppTabs() {
+  const { sessao } = useSession();
+
   return (
     <Tabs>
       <TabSlot style={{ height: '100%' }} />
@@ -25,9 +28,11 @@ export default function AppTabs() {
           <TabTrigger name="vagas" href="/vagas" asChild>
             <TabButton>Vagas</TabButton>
           </TabTrigger>
-          <TabTrigger name="painel" href="/painel" asChild>
-            <TabButton>Painel</TabButton>
-          </TabTrigger>
+          {sessao?.coordenador ? (
+            <TabTrigger name="painel" href="/painel" asChild>
+              <TabButton>Painel</TabButton>
+            </TabTrigger>
+          ) : null}
         </CustomTabList>
       </TabList>
     </Tabs>
