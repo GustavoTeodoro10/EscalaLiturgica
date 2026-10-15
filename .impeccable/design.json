@@ -1,0 +1,348 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-13T15:44:57.709Z",
+  "title": "Design System: Escala de Coroinhas e Cerimoniários",
+  "extensions": {
+    "colorMeta": {
+      "wine": {
+        "role": "primary",
+        "displayName": "Vinho da Paróquia",
+        "canonical": "#7A2331",
+        "tonalRamp": [
+          "#3b1118",
+          "#631c28",
+          "#8b2838",
+          "#b23348",
+          "#d26073",
+          "#e39ca7",
+          "#f0cbd1",
+          "#f9ebed"
+        ]
+      },
+      "wine-soft": {
+        "role": "primary",
+        "displayName": "Vinho Diluído",
+        "canonical": "#EFDCD8",
+        "tonalRamp": [
+          "#361c16",
+          "#5a2e25",
+          "#7f4134",
+          "#a35343",
+          "#c47d6e",
+          "#daaea5",
+          "#ecd5d0",
+          "#f8efed"
+        ]
+      },
+      "rose-wine": {
+        "role": "primary",
+        "displayName": "Rosa-vinho (escuro)",
+        "canonical": "#D9788A",
+        "tonalRamp": [
+          "#3c1119",
+          "#631c29",
+          "#8b273a",
+          "#b3324a",
+          "#d26075",
+          "#e39ca9",
+          "#f0cbd2",
+          "#f9ebee"
+        ]
+      },
+      "parchment": {
+        "role": "neutral",
+        "displayName": "Pergaminho",
+        "canonical": "#F4EEE0",
+        "tonalRamp": [
+          "#382e14",
+          "#5e4c21",
+          "#846a2f",
+          "#a9893c",
+          "#caac68",
+          "#decba1",
+          "#eee4ce",
+          "#f8f5ec"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Papel",
+        "canonical": "#FBF8F0",
+        "tonalRamp": [
+          "#3c3010",
+          "#65511b",
+          "#8d7126",
+          "#b59130",
+          "#d4b45e",
+          "#e4d09a",
+          "#f1e7cb",
+          "#faf6eb"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Tinta",
+        "canonical": "#2A241E",
+        "tonalRamp": [
+          "#2d2620",
+          "#4a4035",
+          "#68594a",
+          "#867360",
+          "#aa9988",
+          "#cabfb5",
+          "#e3ded8",
+          "#f4f2f0"
+        ]
+      },
+      "night": {
+        "role": "neutral",
+        "displayName": "Noite",
+        "canonical": "#1B1612",
+        "tonalRamp": [
+          "#2e251f",
+          "#4d3e33",
+          "#6b5747",
+          "#8a705c",
+          "#ad9785",
+          "#ccbeb3",
+          "#e4ddd7",
+          "#f5f2f0"
+        ]
+      },
+      "attention": {
+        "role": "semantic",
+        "displayName": "Âmbar de Atenção",
+        "canonical": "#7A4F00",
+        "tonalRamp": [
+          "#4d3200",
+          "#805300",
+          "#b37400",
+          "#e69500",
+          "#ffb733",
+          "#ffd280",
+          "#ffe8bd",
+          "#fff6e5"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Vermelho de Erro",
+        "canonical": "#B5380A",
+        "tonalRamp": [
+          "#481604",
+          "#792507",
+          "#a93409",
+          "#d9430c",
+          "#f46f3e",
+          "#f8a586",
+          "#fcd0c0",
+          "#feede7"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Verde de Confirmação",
+        "canonical": "#2F5D3A",
+        "tonalRamp": [
+          "#1a3320",
+          "#2b5535",
+          "#3c774a",
+          "#4d985f",
+          "#77bb88",
+          "#aad4b4",
+          "#d3e9d8",
+          "#eef6f0"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "Nome do app no login e destaque do usuário gerado."
+      },
+      "subtitle": {
+        "displayName": "Subtitle",
+        "purpose": "Título de cada tela."
+      },
+      "heading": {
+        "displayName": "Heading",
+        "purpose": "Seções e mês do calendário."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Dia no bloco de data e horário nas Vagas."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Texto corrido e de campo, 16 px no mínimo."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease-out-strong",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Curva única de toque, tom e entrada."
+      },
+      {
+        "name": "press",
+        "value": "scale(0.97), 120ms",
+        "purpose": "Resposta ao toque em botões, chips, dias e abas."
+      },
+      {
+        "name": "tone",
+        "value": "background/border 140ms",
+        "purpose": "Hover, seleção, foco e erro."
+      },
+      {
+        "name": "enter",
+        "value": "opacity + translateY(6px), 180ms; exit 120ms",
+        "purpose": "Avisos, estado vazio e mensagens de campo."
+      },
+      {
+        "name": "list-stagger",
+        "value": "40ms por item, máximo 6, uma vez",
+        "purpose": "Primeira exibição de Agenda e Missas."
+      },
+      {
+        "name": "skeleton-pulse",
+        "value": "opacity 0.55 a 1, 1.2s alternate infinite",
+        "purpose": "Único movimento contínuo."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "bar-compact",
+        "value": "520px"
+      },
+      {
+        "name": "content-max",
+        "value": "560px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ação principal da tela, uma por vez.",
+      "html": "<button class=\"ds-btn-primary\">Escalar Ana</button>",
+      "css": ".ds-btn-primary{background:#7A2331;color:#fff;border:1px solid #7A2331;border-radius:999px;min-height:48px;padding:0 24px;font:600 16px/22px system-ui,sans-serif;cursor:pointer;transition:opacity .15s,transform .15s}.ds-btn-primary:hover{opacity:.92}.ds-btn-primary:active{transform:scale(.98)}.ds-btn-primary:focus-visible{outline:2px solid #7A2331;outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Ação de apoio, contornada.",
+      "html": "<button class=\"ds-btn-secondary\">Chamar famílias</button>",
+      "css": ".ds-btn-secondary{background:#FBF8F0;color:#2A241E;border:1px solid #8C8068;border-radius:999px;min-height:48px;padding:0 24px;font:600 16px/22px system-ui,sans-serif;cursor:pointer;transition:background .15s,transform .15s}.ds-btn-secondary:hover{background:#EFE8D5}.ds-btn-secondary:active{transform:scale(.98)}.ds-btn-secondary:focus-visible{outline:2px solid #7A2331;outline-offset:2px}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Ação discreta, como cancelar ou sair.",
+      "html": "<button class=\"ds-btn-ghost\">Cancelar inscrição</button>",
+      "css": ".ds-btn-ghost{background:transparent;color:#7A2331;border:1px solid transparent;border-radius:999px;min-height:48px;padding:0 8px;font:600 16px/22px system-ui,sans-serif;cursor:pointer;transition:background .15s}.ds-btn-ghost:hover{background:#EFDCD8}.ds-btn-ghost:focus-visible{outline:2px solid #7A2331;outline-offset:2px}"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Escolha única: filho, função, dia da semana, aba.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Ana</button>",
+      "css": ".ds-chip{background:#FBF8F0;color:#2A241E;border:1px solid #8C8068;border-radius:999px;min-height:44px;padding:0 16px;font:600 14px/20px system-ui,sans-serif;cursor:pointer;transition:background .15s}.ds-chip:hover{background:#EFE8D5}.ds-chip[aria-pressed=true]{background:#7A2331;border-color:#7A2331;color:#fff}.ds-chip:focus-visible{outline:2px solid #7A2331;outline-offset:2px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Campo com rótulo acima.",
+      "html": "<label class=\"ds-field\">Usuário<input placeholder=\"ex: Nome.Sobrenome\"></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:4px;font:600 14px/20px system-ui,sans-serif;color:#2A241E}.ds-field input{background:#FBF8F0;color:#2A241E;border:1px solid #8C8068;border-radius:12px;min-height:48px;padding:0 16px;font:400 16px system-ui,sans-serif;caret-color:#7A2331}.ds-field input:focus-visible{outline:2px solid #7A2331;outline-offset:1px;border-color:#7A2331}"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Contêiner claro com filete, sem sombra.",
+      "html": "<div class=\"ds-card\"><h3>Próxima missa</h3><p>Quinta-feira, 15 de outubro às 19:00</p></div>",
+      "css": ".ds-card{background:#FBF8F0;color:#2A241E;border:1px solid #DCD0B4;border-radius:16px;padding:16px;font:400 16px/24px system-ui,sans-serif}.ds-card h3{margin:0;font:600 20px/26px Georgia,serif}"
+    },
+    {
+      "name": "Date Block",
+      "kind": "custom",
+      "description": "Assinatura do sistema: o dia em numeral serifado.",
+      "html": "<div class=\"ds-date\"><b>15</b><span>qui out</span></div>",
+      "css": ".ds-date{display:flex;flex-direction:column;align-items:center;width:64px;gap:2px;color:#2A241E}.ds-date b{font:600 32px/36px Georgia,serif;font-variant-numeric:tabular-nums}.ds-date span{font:500 13px/18px system-ui,sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#6B6154}"
+    },
+    {
+      "name": "Calendar Day",
+      "kind": "custom",
+      "description": "Dia com vaga no calendário de Vagas.",
+      "html": "<button class=\"ds-day\" aria-pressed=\"false\">16</button><button class=\"ds-day\" aria-pressed=\"true\">15</button>",
+      "css": ".ds-day{width:42px;height:42px;border-radius:999px;border:1px solid transparent;background:#EFDCD8;color:#7A2331;font:600 14px/20px system-ui,sans-serif;cursor:pointer}.ds-day[aria-pressed=true]{background:#7A2331;color:#fff}.ds-day:hover{border-color:#7A2331}.ds-day:focus-visible{outline:2px solid #7A2331;outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A Folha do Missal",
+    "overview": "O app é uma folha de missal posta no celular: pergaminho claro, tinta escura, um único vinho para o que é ação, e a data de cada missa em numeral serifado. A interface é de operar: personalidade em poucos detalhes e o resto familiar.",
+    "keyCharacteristics": [
+      "Um único acento (vinho); dourado só como atenção",
+      "Superfícies mais claras que o fundo, com filete de 1 px; sem sombras",
+      "Spectral em títulos e numerais; sistema no resto",
+      "O bloco de data como único gesto decorativo",
+      "Claro e escuro desde o início"
+    ],
+    "rules": [
+      {
+        "name": "The One Voice Rule",
+        "body": "O vinho é a única cor de ação.",
+        "section": "colors"
+      },
+      {
+        "name": "The Never Color Alone Rule",
+        "body": "Estado nunca é só cor: sempre ícone e texto.",
+        "section": "colors"
+      },
+      {
+        "name": "The Lifted Surface Rule",
+        "body": "Camadas se distinguem por ficarem mais claras que o fundo e por um filete.",
+        "section": "colors"
+      },
+      {
+        "name": "The Serif Stays Home Rule",
+        "body": "Serifa só em título, seção e numeral.",
+        "section": "typography"
+      },
+      {
+        "name": "The 16 Floor Rule",
+        "body": "Texto de leitura e de campo nunca abaixo de 16 px.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Sem sombra em repouso nem em hover; hover é troca de tom.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do usar o vinho só para a ação principal, a seleção atual e o link.",
+      "Do manter 4,5:1 em texto e 3:1 em contornos de controle.",
+      "Do dar a todo alvo de toque 44 px no mínimo.",
+      "Do acompanhar toda cor de estado de ícone e texto.",
+      "Do terminar todo estado vazio com a próxima ação.",
+      "Do mostrar esqueleto no formato do conteúdo enquanto carrega."
+    ],
+    "donts": [
+      "Don't usar o dourado como segundo acento.",
+      "Don't usar serifa em botão, campo ou rótulo.",
+      "Don't pôr sombra, gradiente ou desfoque de fundo em superfícies.",
+      "Don't aninhar cartões.",
+      "Don't usar glifos de texto ou emoji como ícone.",
+      "Don't reintroduzir o painel de números grandes.",
+      "Don't usar animação de layout em listas na web: tira os itens do fluxo e quebra a rolagem."
+    ]
+  }
+}
