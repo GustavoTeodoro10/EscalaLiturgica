@@ -1,4 +1,27 @@
-import type { Crianca, Missa } from '@/types';
+import {
+  administracaoDeServidor,
+  cadastroParaServidor,
+  contatoDeServidor,
+  eventosDeServidor,
+  limitesParaServidor,
+  membroDaPastoralDeServidor,
+  pastoraisPublicasDeServidor,
+  resumoDeServidor,
+  sessaoDeLogin,
+} from '@/services/adapters';
+import type {
+  Administracao,
+  ConfigGeracao,
+  Contato,
+  Evento,
+  LimitesVaga,
+  MembroDaPastoral,
+  NovaPastoral,
+  NovoCadastro,
+  PastoralPublica,
+  ResumoPainel,
+  Sessao,
+} from '@/types';
 
 // URL da implantação "App da Web" do Apps Script (termina em /exec). Definida em .env / na Vercel.
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
@@ -55,14 +78,153 @@ async function chamar<T>(acao: string, args: unknown[]): Promise<T> {
   return corpo.dados;
 }
 
-export type ResultadoLogin =
-  | { sucesso: true; token: string; responsavelId: string; responsavel: string; coordenador: boolean; criancas: Crianca[] }
-  | { sucesso: false; mensagem?: string };
+export type ResultadoLogin = { sucesso: true; sessao: Sessao } | { sucesso: false; mensagem: string };
+export type ResultadoAcao = { sucesso: boolean; mensagem?: string };
+export type ResultadoCadastro =
+  | { sucesso: true; sessao: Sessao; usuario: string }
+  | { sucesso: false; mensagem: string };
+
+type LoginBruto = { sucesso: boolean; mensagem?: string; usuario?: string };
+
+function paraResultadoLogin(bruto: LoginBruto): ResultadoLogin {
+  if (bruto.sucesso) return { sucesso: true, sessao: sessaoDeLogin(bruto) };
+  return { sucesso: false, mensagem: bruto.mensagem ?? 'Usuário ou senha incorretos.' };
+}
 
 export const api = {
-  login: (usuario: string, senha: string) => chamar<ResultadoLogin>('validarLogin', [usuario, senha]),
-  validarSessao: (token: string) => chamar<ResultadoLogin>('validarSessao', [token]),
-  listarMissas: (token: string) => chamar<Missa[]>('listarMissas', [token]),
+  /* ---------- acesso ---------- */
+
+  async login(usuario: string, senha: string): Promise<ResultadoLogin> {
+    return paraResultadoLogin(await chamar<LoginBruto>('validarLogin', [usuario, senha]));
+  },
+
+  async validarSessao(token: string): Promise<ResultadoLogin> {
+    return paraResultadoLogin(await chamar<LoginBruto>('validarSessao', [token]));
+  },
+
+  async cadastrar(dados: NovoCadastro): Promise<ResultadoCadastro> {
+    const bruto = await chamar<LoginBruto>('cadastrarResponsavel', [cadastroParaServidor(dados)]);
+    if (!bruto.sucesso) return { sucesso: false, mensagem: bruto.mensagem ?? 'Não foi possível concluir o cadastro.' };
+    return { sucesso: true, sessao: sessaoDeLogin(bruto), usuario: bruto.usuario ?? '' };
+  },
+
+  /** Pastorais ativas e suas funções (tela de cadastro, antes do login). */
+  async listarPastorais(): Promise<PastoralPublica[]> {
+    return pastoraisPublicasDeServidor(await chamar<unknown>('listarPastoraisPublico', []));
+  },
+
+  /** Sempre "sucesso": o servidor não revela se o usuário existe. */
+  async solicitarRecuperacao(usuario: string): Promise<void> {
+    await chamar<{ sucesso: boolean }>('solicitarRecuperacaoSenha', [usuario]);
+  },
+
+  redefinirSenha(token: string, novaSenha: string): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('redefinirSenha', [token, novaSenha]);
+  },
+
+  /* ---------- responsáveis e membros ---------- */
+
+  async listarEventos(token: string): Promise<Evento[]> {
+    return eventosDeServidor(await chamar<unknown>('listarMissas', [token]));
+  },
+
+  inscrever(token: string, eventoId: string, pessoaId: string, funcaoId: string): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('inscrever', [token, eventoId, pessoaId, funcaoId]);
+  },
+
+  cancelar(token: string, eventoId: string, pessoaId: string, funcaoId: string): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('cancelar', [token, eventoId, pessoaId, funcaoId]);
+  },
+
+  /** A pessoa pede para participar de uma função; fica pendente até o coordenador aprovar. */
+  solicitarEntrada(token: string, pessoaId: string, funcaoId: string): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('solicitarEntrada', [token, pessoaId, funcaoId]);
+  },
+
+  /* ---------- coordenação (por pastoral) ---------- */
+
+  async obterResumo(token: string, pastoralId: string): Promise<ResumoPainel> {
+    return resumoDeServidor(await chamar<unknown>('obterResumoCoordenador', [token, pastoralId]));
+  },
+
+  /** Missas com as vagas da pastoral e os nomes de quem está escalado. */
+  async listarEventosDetalhados(token: string, pastoralId: string): Promise<Evento[]> {
+    return eventosDeServidor(await chamar<unknown>('listarMissasParaCoordenador', [token, pastoralId]));
+  },
+
+  async listarMembros(token: string, pastoralId: string): Promise<MembroDaPastoral[]> {
+    const lista = await chamar<unknown[]>('listarMembros', [token, pastoralId]);
+    return lista.map(membroDaPastoralDeServidor).filter((m): m is MembroDaPastoral => m !== null);
+  },
+
+  decidirEntrada(
+    token: string,
+    pastoralId: string,
+    pessoaId: string,
+    funcaoId: string,
+    aprovar: boolean,
+  ): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('decidirEntrada', [token, pastoralId, { pessoaId, funcaoId, aprovar }]);
+  },
+
+  removerMembro(token: string, pastoralId: string, pessoaId: string, funcaoId: string): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('removerMembro', [token, pastoralId, { pessoaId, funcaoId }]);
+  },
+
+  ajustarVagas(token: string, pastoralId: string, eventoId: string, limites: LimitesVaga[]): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('ajustarVagas', [token, pastoralId, eventoId, limitesParaServidor(limites)]);
+  },
+
+  async listarContatos(token: string, pastoralId: string, eventoId: string, funcaoId: string): Promise<Contato[]> {
+    const lista = await chamar<unknown[]>('obterResponsaveisParaChamar', [token, pastoralId, eventoId, funcaoId]);
+    return lista.map(contatoDeServidor).filter((c): c is Contato => c !== null);
+  },
+
+  async enviarLembretes(token: string, pastoralId: string): Promise<number> {
+    const r = await chamar<{ sucesso: boolean; avisados?: number }>('enviarLembretesCoordenador', [token, pastoralId]);
+    return Number(r.avisados) || 0;
+  },
+
+  /* ---------- administração ---------- */
+
+  async obterAdministracao(token: string): Promise<Administracao> {
+    return administracaoDeServidor(await chamar<unknown>('obterAdministracao', [token]));
+  },
+
+  criarPastoral(token: string, dados: NovaPastoral): Promise<ResultadoAcao & { id?: string }> {
+    return chamar<ResultadoAcao & { id?: string }>('criarPastoral', [token, dados]);
+  },
+
+  editarPastoral(
+    token: string,
+    pastoralId: string,
+    dados: {
+      nome?: string;
+      coordenadorId?: string;
+      ativa?: boolean;
+      funcoes?: { id?: string; nome: string; minimo: number; maximo: number }[];
+    },
+  ): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('editarPastoral', [token, pastoralId, dados]);
+  },
+
+  /** `data` no formato yyyy-MM-dd. */
+  criarMissa(token: string, dados: { data: string; horario: string; descricao: string }): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('criarMissa', [token, dados]);
+  },
+
+  gerarMissas(token: string, config: ConfigGeracao): Promise<ResultadoAcao & { criadas?: number; ignoradas?: number }> {
+    return chamar<ResultadoAcao & { criadas?: number; ignoradas?: number }>('gerarMissasRecorrentes', [token, config]);
+  },
+
+  editarMissa(token: string, eventoId: string, dados: { horario: string; descricao: string }): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('editarMissa', [token, eventoId, dados]);
+  },
+
+  /** `dataEsperada` garante que o id ainda é a missa que a pessoa viu. */
+  excluirMissa(token: string, eventoId: string, dataEsperada: string): Promise<ResultadoAcao> {
+    return chamar<ResultadoAcao>('excluirMissa', [token, eventoId, dataEsperada]);
+  },
 };
 
 /** Texto amigável para mostrar ao usuário. */

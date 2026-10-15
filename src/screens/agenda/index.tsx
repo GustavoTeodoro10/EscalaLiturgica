@@ -1,124 +1,205 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
+import { Aviso } from '@/components/aviso';
+import { BlocoData } from '@/components/bloco-data';
 import { Button } from '@/components/button';
+import { Card, Divisor } from '@/components/card';
+import { EntradaLista } from '@/components/entrada-lista';
+import { EstadoVazio } from '@/components/estado-vazio';
+import { EsqueletoLista } from '@/components/esqueleto';
+import { CalendarBlankIcon, SignOutIcon, XIcon } from '@/components/icones';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ENTRA_FADE, SAI } from '@/constants/entradas';
 import { Spacing } from '@/constants/theme';
+import { useEventos } from '@/hooks/use-eventos';
 import { useSession } from '@/hooks/use-session';
-import { api, ApiError, mensagemDeErro } from '@/services/api';
-import type { Crianca, Missa } from '@/types';
-import { capitalizar, diaDaSemana } from '@/utils/format-date';
-
-type Compromisso = { missa: Missa; crianca: Crianca };
+import { agruparPorData, compromissosDe, rotuloDaVaga } from '@/utils/eventos';
 
 export function Agenda() {
+  const router = useRouter();
   const { sessao, sair } = useSession();
-  const token = sessao?.token;
+  const { eventos, erro, atualizando, recarregar, cancelar } = useEventos();
 
-  const [missas, setMissas] = useState<Missa[] | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [atualizando, setAtualizando] = useState(false);
-  const [tentativa, setTentativa] = useState(0);
+  // chave "eventoId:pessoaId" do compromisso aguardando confirmação de cancelamento
+  const [confirmando, setConfirmando] = useState<string | null>(null);
+  const [cancelando, setCancelando] = useState<string | null>(null);
+  const [mensagem, setMensagem] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
 
-  useEffect(() => {
-    if (!token) return;
-    let ativo = true;
-
-    api
-      .listarMissas(token)
-      .then((lista) => {
-        if (!ativo) return;
-        setMissas(lista);
-        setErro(null);
-      })
-      .catch((e: unknown) => {
-        if (!ativo) return;
-        if (e instanceof ApiError && e.codigo === 'SESSAO_INVALIDA') sair();
-        else setErro(mensagemDeErro(e));
-      })
-      .finally(() => {
-        if (ativo) setAtualizando(false);
-      });
-
-    return () => {
-      ativo = false;
-    };
-  }, [token, tentativa, sair]);
-
-  function recarregar() {
-    setAtualizando(true);
-    setTentativa((n) => n + 1);
-  }
+  // sair da aba apaga a confirmação e qualquer cancelamento pendente
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setMensagem(null);
+        setConfirmando(null);
+      };
+    }, []),
+  );
 
   if (!sessao) return null;
 
-  const compromissos: Compromisso[] = (missas ?? []).flatMap((missa) =>
-    sessao.criancas
-      .filter((c) => (c.funcao === 'Coroinha' ? missa.coroinhas : missa.cerimoniarios).includes(c.id))
-      .map((crianca) => ({ missa, crianca })),
-  );
-
+  const compromissos = eventos ? compromissosDe(eventos, sessao.pessoas) : [];
+  const grupos = agruparPorData(compromissos);
   const primeiroNome = sessao.responsavel.split(' ')[0];
+
+  // só mostra a pastoral junto da função quando a família participa de mais de uma
+  const variasPastorais = new Set(sessao.pessoas.flatMap((p) => p.membros.map((m) => m.pastoralId))).size > 1;
+
+  async function confirmarCancelamento(eventoId: string, pessoaId: string, funcaoId: string) {
+    const pessoa = sessao?.pessoas.find((p) => p.id === pessoaId);
+    if (!pessoa) return;
+    const chave = `${eventoId}:${pessoaId}:${funcaoId}`;
+    setCancelando(chave);
+    setMensagem(null);
+    const falha = await cancelar(eventoId, pessoa, funcaoId);
+    setCancelando(null);
+    setConfirmando(null);
+    setMensagem(falha ? { tipo: 'erro', texto: falha } : { tipo: 'ok', texto: `Inscrição de ${pessoa.nome} cancelada.` });
+  }
 
   return (
     <Screen
       title="Agenda da família"
       subtitle={`Olá, ${primeiroNome}. Estas são as missas em que sua família está escalada.`}
       onRefresh={recarregar}
-      refreshing={atualizando}>
-      {missas === null && !erro ? <ActivityIndicator style={styles.espaco} /> : null}
+      refreshing={atualizando && eventos !== null}>
+      {mensagem ? <Aviso tipo={mensagem.tipo}>{mensagem.texto}</Aviso> : null}
 
       {erro ? (
-        <View style={styles.bloco}>
-          <ThemedText accessibilityRole="alert">{erro}</ThemedText>
+        <View style={styles.coluna}>
+          <Aviso tipo="erro">{erro}</Aviso>
           <Button title="Tentar de novo" variant="secondary" onPress={recarregar} />
         </View>
       ) : null}
 
-      {missas !== null && compromissos.length === 0 ? (
-        <ThemedText themeColor="textSecondary">
-          Nenhum compromisso agendado ainda. Veja as missas com vagas na aba Vagas.
-        </ThemedText>
+      {eventos === null && !erro ? <EsqueletoLista linhas={3} /> : null}
+
+      {eventos !== null && compromissos.length === 0 ? (
+        <Card>
+          <EstadoVazio
+            icone={CalendarBlankIcon}
+            titulo="Nenhuma missa agendada"
+            texto="Escolha uma missa com vaga e escale seus filhos."
+            acao={{ rotulo: 'Ver vagas', onPress: () => router.push('/vagas') }}
+          />
+        </Card>
       ) : null}
 
-      {compromissos.map(({ missa, crianca }) => (
-        <ThemedView
-          key={`${missa.linha}-${crianca.id}`}
-          type="backgroundElement"
-          style={styles.cartao}>
-          <ThemedText type="smallBold">{crianca.nome}</ThemedText>
-          <ThemedText>
-            {capitalizar(diaDaSemana(missa.data))}, {missa.data} às {missa.horario}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {crianca.funcao}
-            {missa.descricao ? ` · ${missa.descricao}` : ''}
-          </ThemedText>
-        </ThemedView>
-      ))}
+      {grupos.length > 0 ? (
+        <Card style={styles.lista}>
+          {grupos.map((grupo, g) => (
+            <EntradaLista key={grupo.data} indice={g}>
+              {g > 0 ? <Divisor /> : null}
+              {/* Um dia, um bloco de data: vários filhos na mesma data ficam juntos. */}
+              <View style={styles.grupo}>
+                <BlocoData data={grupo.data} />
+                <View style={styles.itens}>
+                  {grupo.itens.map(({ evento, pessoa, vaga }, i) => {
+                    const chave = `${evento.id}:${pessoa.id}:${vaga.funcaoId}`;
+                    const pedindoConfirmacao = confirmando === chave;
+                    return (
+                      <View key={chave} style={styles.item}>
+                        {i > 0 ? <Divisor /> : null}
+                        <View style={styles.texto}>
+                          <ThemedText type="strong">{pessoa.nome}</ThemedText>
+                          <ThemedText type="small" themeColor="textSecondary">
+                            {rotuloDaVaga(vaga, variasPastorais)} às {evento.horario}
+                          </ThemedText>
+                          {evento.descricao ? (
+                            <ThemedText type="small" themeColor="textSecondary">
+                              {evento.descricao}
+                            </ThemedText>
+                          ) : null}
+                        </View>
 
-      <View style={styles.sair}>
-        <Button title="Sair" variant="secondary" onPress={sair} />
-      </View>
+                        {pedindoConfirmacao ? (
+                          <Animated.View style={styles.confirmacao} entering={ENTRA_FADE} exiting={SAI}>
+                            <ThemedText type="small" accessibilityRole="alert">
+                              Cancelar a inscrição de {pessoa.nome} nesta missa?
+                            </ThemedText>
+                            <View style={styles.acoes}>
+                              <View style={styles.acao}>
+                                <Button
+                                  title="Sim, cancelar"
+                                  variant="danger"
+                                  onPress={() => confirmarCancelamento(evento.id, pessoa.id, vaga.funcaoId)}
+                                  loading={cancelando === chave}
+                                />
+                              </View>
+                              <View style={styles.acao}>
+                                <Button
+                                  title="Voltar"
+                                  variant="secondary"
+                                  onPress={() => setConfirmando(null)}
+                                  disabled={cancelando === chave}
+                                />
+                              </View>
+                            </View>
+                          </Animated.View>
+                        ) : (
+                          <Button
+                            title="Cancelar inscrição"
+                            variant="ghost"
+                            bloco={false}
+                            alinhado
+                            icone={XIcon}
+                            accessibilityLabel={`Cancelar inscrição de ${pessoa.nome}`}
+                            onPress={() => {
+                              setMensagem(null);
+                              setConfirmando(chave);
+                            }}
+                          />
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            </EntradaLista>
+          ))}
+        </Card>
+      ) : null}
+
+      <Button title="Sair" variant="ghost" bloco={false} alinhado icone={SignOutIcon} onPress={sair} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  espaco: {
-    marginVertical: Spacing.four,
-  },
-  bloco: {
+  coluna: {
     gap: Spacing.three,
   },
-  cartao: {
-    gap: Spacing.one,
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
+  lista: {
+    gap: 0,
+    paddingVertical: 0,
   },
-  sair: {
-    marginTop: Spacing.four,
+  grupo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+    paddingVertical: Spacing.three,
+  },
+  itens: {
+    flex: 1,
+    gap: Spacing.three,
+  },
+  item: {
+    gap: Spacing.two,
+  },
+  texto: {
+    gap: Spacing.half,
+  },
+  confirmacao: {
+    gap: Spacing.two,
+  },
+  acoes: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  acao: {
+    flex: 1,
   },
 });

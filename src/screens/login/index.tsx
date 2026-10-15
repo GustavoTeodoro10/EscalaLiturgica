@@ -1,16 +1,17 @@
-import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View } from 'react-native';
 
+import { Aviso } from '@/components/aviso';
 import { Button } from '@/components/button';
+import { FormScreen } from '@/components/form-screen';
 import { TextField } from '@/components/text-field';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { TextLink } from '@/components/text-link';
 import { Spacing } from '@/constants/theme';
 import { useSession } from '@/hooks/use-session';
 
 export function Login() {
+  const router = useRouter();
   const { entrar } = useSession();
   const [usuario, setUsuario] = useState('');
   const [senha, setSenha] = useState('');
@@ -34,106 +35,55 @@ export function Login() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled">
-            <View style={styles.cabecalho}>
-              <Image
-                source={require('@/assets/images/logo-paroquia.jpg')}
-                style={styles.logo}
-                contentFit="contain"
-                accessibilityLabel="Brasão da Paróquia São Vicente de Paulo"
-              />
-              <ThemedText type="subtitle" style={styles.centro}>
-                Escala de Coroinhas e Cerimoniários
-              </ThemedText>
-              <ThemedText themeColor="textSecondary" style={styles.centro}>
-                Paróquia São Vicente de Paulo · Mauá-SP
-              </ThemedText>
-            </View>
+    <FormScreen
+      tamanhoBrasao={96}
+      title="Escala Litúrgica"
+      subtitle="Paróquia São Vicente de Paulo, Mauá">
+      <View style={styles.formulario}>
+        <TextField
+          label="Usuário"
+          value={usuario}
+          onChangeText={setUsuario}
+          placeholder="ex: Nome.Sobrenome"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="username"
+          textContentType="username"
+          returnKeyType="next"
+        />
+        <TextField
+          label="Senha"
+          value={senha}
+          onChangeText={setSenha}
+          placeholder="Sua senha"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="current-password"
+          textContentType="password"
+          returnKeyType="go"
+          onSubmitEditing={enviar}
+        />
 
-            <View style={styles.formulario}>
-              <TextField
-                label="Usuário"
-                value={usuario}
-                onChangeText={setUsuario}
-                placeholder="ex: Nome.Sobrenome"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="username"
-                textContentType="username"
-                returnKeyType="next"
-              />
-              <TextField
-                label="Senha"
-                value={senha}
-                onChangeText={setSenha}
-                placeholder="Sua senha"
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="current-password"
-                textContentType="password"
-                returnKeyType="go"
-                onSubmitEditing={enviar}
-              />
+        {erro ? <Aviso tipo="erro">{erro}</Aviso> : null}
 
-              {erro ? (
-                <ThemedText type="small" accessibilityRole="alert" style={styles.erro}>
-                  {erro}
-                </ThemedText>
-              ) : null}
+        <Button title="Entrar" onPress={enviar} loading={enviando} />
+      </View>
 
-              <Button title="Entrar" onPress={enviar} loading={enviando} />
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </ThemedView>
+      <View style={styles.links}>
+        <TextLink rotulo="Esqueci minha senha" onPress={() => router.push('/esqueci-senha')} />
+        <TextLink rotulo="Criar cadastro" onPress={() => router.push('/cadastro')} />
+      </View>
+    </FormScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  safeArea: {
-    flex: 1,
-    maxWidth: 480,
-  },
-  content: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.five,
-  },
-  cabecalho: {
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  logo: {
-    width: 140,
-    height: 140,
-    marginBottom: Spacing.two,
-  },
-  centro: {
-    textAlign: 'center',
-  },
   formulario: {
     gap: Spacing.three,
   },
-  erro: {
-    color: '#B3261E',
+  links: {
+    alignItems: 'center',
+    gap: Spacing.one,
   },
 });

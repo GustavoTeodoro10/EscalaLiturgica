@@ -6,4 +6,51 @@
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
+
+  /* Espelha src/constants/theme.ts: o que o navegador desenha por conta própria também é da marca. */
+  --marca-acento: #7a2331;
+  --marca-selecao: #efdcd8;
+  --marca-texto: #2a241e;
+  --marca-borda: #8c8068;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --marca-acento: #d9788a;
+    --marca-selecao: #3e2229;
+    --marca-texto: #f1eadb;
+    --marca-borda: #847762;
+  }
+}
+
+::selection {
+  background: var(--marca-selecao);
+  color: var(--marca-texto);
+}
+
+input,
+textarea {
+  caret-color: var(--marca-acento);
+}
+
+/* Foco por teclado visível em tudo que for interativo */
+:focus-visible {
+  outline: 2px solid var(--marca-acento);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-color: var(--marca-borda) transparent;
+  scrollbar-width: thin;
+}
+
+/* Quem prefere menos movimento não recebe rolagem suave nem transições do navegador */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    /* entradas em CSS puro (src/components/entrada-lista.web.tsx): sem espera e sem deslocamento */
+    animation-delay: 0ms !important;
+    animation-duration: 1ms !important;
+  }
 }
