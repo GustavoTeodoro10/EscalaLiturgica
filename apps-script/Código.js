@@ -1,24 +1,29 @@
 /**
- * App de Escala de Coroinhas e Cerimoniários — Paróquia São Vicente de Paulo (Mauá-SP)
+ * Escala Litúrgica: pastorais que servem nas missas. Paróquia São Vicente de Paulo (Mauá-SP)
  * ---------------------------------------------------------------------------------
- * Abas necessárias (rode configurarPlanilha() uma vez para criar tudo):
+ * Modelo (rode migrarParaMultiPastoral() uma vez para criar/converter as abas):
  *
- *  "Responsaveis" -> ID | Nome | Usuario | Senha | Email | Celular | Coordenador
- *  "Criancas"     -> ID | Nome | Funcao
- *  "Vinculos"     -> ResponsavelID | CriancaID        (relação N:N)
- *  "Missas"       -> Data | Horario | Descricao |
- *                    MinCoroinha | MaxCoroinha | CoroinhasEscalados |
- *                    MinCerimoniario | MaxCerimoniario | CerimoniariosEscalados
- *                    (as colunas "Escalados" guardam IDs de crianças, separados por vírgula)
+ *  "Responsaveis" -> ID | Nome | Usuario | Senha | Email | Celular | Coordenador (antigo) | Administrador
+ *  "Criancas"     -> ID | Nome | Funcao (antigo) | Tipo (crianca/adulto)     (cadastro de pessoas)
+ *  "Vinculos"     -> ResponsavelID | CriancaID                                (para adultos, o próprio)
+ *  "Pastorais"    -> ID | Nome | CoordenadorID | Ativa
+ *  "Funcoes"      -> ID | PastoralID | Nome | MinPadrao | MaxPadrao
+ *  "Membros"      -> PessoaID | PastoralID | FuncaoID | Situacao (ativo/pendente)
+ *  "Eventos"      -> ID | Data | Horario | Descricao                          (a missa existe uma vez)
+ *  "Vagas"        -> EventoID | FuncaoID | Minimo | Maximo | Escalados        (sem linha = padrão da função)
  *  "ResetSenha"   -> Token | ResponsavelID | ExpiraEm | Usado
+ *  "Missas"       -> aba antiga (só leitura, usada na migração)
+ *
+ * PERFIS: administrador (cria missas e pastorais), coordenador (gerencia a própria pastoral) e
+ * responsável/membro. Detalhes em docs/MULTI-PASTORAL-CONTRATO.md.
  *
  * SEGURANÇA
  *  - Toda função chamável pelo navegador recebe o token de sessão e valida no servidor.
  *  - Funções cujo nome termina com "_" são internas: o Apps Script NÃO as expõe ao navegador.
  *  - Senhas ficam com hash (formato h1$salt$hash). Senhas antigas em texto puro são
  *    convertidas automaticamente no próximo login de cada pessoa.
- *  - Funções administrativas (configurarPlanilha, criarGatilhoDiario, testeMissas,
- *    gerarDadosTeste) só rodam se a propriedade de script PERMITIR_ADMIN = sim existir.
+ *  - Funções administrativas (configurarPlanilha, migrarParaMultiPastoral, criarGatilhoDiario,
+ *    testeMissas) só rodam se a propriedade de script PERMITIR_ADMIN = sim existir.
  */
 
 const ABA_RESPONSAVEIS = 'Responsaveis';
@@ -26,8 +31,15 @@ const ABA_CRIANCAS = 'Criancas';
 const ABA_VINCULOS = 'Vinculos';
 const ABA_MISSAS = 'Missas';
 const ABA_RESET = 'ResetSenha';
+const ABA_PASTORAIS = 'Pastorais';
+const ABA_FUNCOES = 'Funcoes';
+const ABA_MEMBROS = 'Membros';
+const ABA_EVENTOS = 'Eventos';
+const ABA_VAGAS = 'Vagas';
 
 const DIAS_SEMANA = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+// Nome por extenso, para mensagens. Não usar formatDate(..., 'EEEE'): o Apps Script devolve em inglês.
+const NOMES_DIA_SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 
 const PARÓQUIA = {
   nome: 'Paróquia São Vicente de Paulo',
@@ -36,10 +48,9 @@ const PARÓQUIA = {
 };
 
 const TEMPLATE_MENSAGEM_CHAMADA =
-  'Olá, {responsavel}! Está faltando gente pra servir como {funcao} na missa de {diaSemana}, {data} às {horario}{descricaoTexto}. {crianca} pode ajudar? Qualquer confirmação, me avisa por aqui.\n\n— {paroquia}';
+  'Olá, {responsavel}! Está faltando gente pra servir como {funcao} na pastoral {pastoral} na missa de {diaSemana}, {data} às {horario}{descricaoTexto}. {pessoa} pode ajudar? Qualquer confirmação, me avisa por aqui.\n\n— {paroquia}';
 
 /* Segurança */
-const FUNCOES_VALIDAS = ['Coroinha', 'Cerimoniário'];
 const SESSAO_VALIDADE_MS = 60 * 24 * 60 * 60 * 1000; // 60 dias, renovada a cada abertura do app
 const SENHA_MINIMA = 6;
 const LOGIN_MAX_FALHAS = 5;
@@ -51,13 +62,13 @@ const REGEX_TOKEN_RESET = /^[a-f0-9]{32}$/;
 const REGEX_HORARIO = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function doGet(e) {
-  const template = HtmlService.createTemplateFromFile('Index');
-  const token = (e && e.parameter && e.parameter.token) ? String(e.parameter.token) : '';
-  template.tokenReset = REGEX_TOKEN_RESET.test(token) ? token : '';
-  return template.evaluate()
-    .setTitle('Escala de Coroinhas e Cerimoniários')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  const link = urlBaseAppNovo_();
+  const corpo = link
+    ? '<p>Abra o aplicativo: <a href="' + link + '">' + link + '</a></p>'
+    : '<p>Este endereço é a API do aplicativo. Use o link do aplicativo enviado pela paróquia.</p>';
+  return HtmlService.createHtmlOutput('<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<body style="font-family:sans-serif;padding:24px"><h3>Escala Litúrgica</h3>' + corpo + '</body>')
+    .setTitle('Escala Litúrgica');
 }
 
 /* ---------------------------------------------------------------------- */
@@ -71,22 +82,35 @@ function doGet(e) {
  * Resposta: { "ok": true, "dados": ... }  ou  { "ok": false, "erro": "SESSAO_INVALIDA" }
  */
 const ACOES_API = {
+  // sem sessão
   validarLogin: validarLogin,
   validarSessao: validarSessao,
   cadastrarResponsavel: cadastrarResponsavel,
+  listarPastoraisPublico: listarPastoraisPublico,
   solicitarRecuperacaoSenha: solicitarRecuperacaoSenha,
   redefinirSenha: redefinirSenha,
+  // responsável / membro
   listarMissas: listarMissas,
   inscrever: inscrever,
   cancelar: cancelar,
-  listarCriancas: listarCriancas,
+  solicitarEntrada: solicitarEntrada,
+  // coordenador da pastoral
   listarMissasParaCoordenador: listarMissasParaCoordenador,
   obterResumoCoordenador: obterResumoCoordenador,
+  listarMembros: listarMembros,
+  decidirEntrada: decidirEntrada,
+  removerMembro: removerMembro,
+  ajustarVagas: ajustarVagas,
   obterResponsaveisParaChamar: obterResponsaveisParaChamar,
+  enviarLembretesCoordenador: enviarLembretesCoordenador,
+  // administrador
+  obterAdministracao: obterAdministracao,
+  criarPastoral: criarPastoral,
+  editarPastoral: editarPastoral,
+  criarMissa: criarMissa,
   gerarMissasRecorrentes: gerarMissasRecorrentes,
   editarMissa: editarMissa,
-  excluirMissa: excluirMissa,
-  enviarLembretesCoordenador: enviarLembretesCoordenador
+  excluirMissa: excluirMissa
 };
 
 const ERROS_API_CONHECIDOS = ['SESSAO_INVALIDA', 'SEM_PERMISSAO', 'ACAO_INVALIDA', 'REQUISICAO_INVALIDA'];
@@ -135,38 +159,26 @@ function exigirAdmin_() {
   }
 }
 
-/** Rode uma vez pelo editor para criar as abas com cabeçalhos e exemplo. */
+/**
+ * Planilha nova (vazia): cria todas as abas e um administrador de exemplo.
+ * Planilha que já tem dados: rode migrarParaMultiPastoral().
+ */
 function configurarPlanilha() {
   exigirAdmin_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  const resp = ss.getSheetByName(ABA_RESPONSAVEIS) || ss.insertSheet(ABA_RESPONSAVEIS);
-  if (resp.getLastRow() === 0) {
-    resp.appendRow(['ID', 'Nome', 'Usuario', 'Senha', 'Email', 'Celular', 'Coordenador']);
-    resp.appendRow(['R001', 'Coordenador Exemplo', 'Coordenador.Exemplo', codificarSenha_('troque-esta-senha'), 'coordenador@exemplo.com', '(11) 90000-0000', true]);
+  const resp = abaOuNova_(ss, ABA_RESPONSAVEIS, ['ID', 'Nome', 'Usuario', 'Senha', 'Email', 'Celular', 'Coordenador', 'Administrador']);
+  if (resp.getLastRow() === 1) {
+    resp.appendRow(['R001', 'Administrador Exemplo', 'Administrador.Exemplo', codificarSenha_('troque-esta-senha'),
+      'admin@exemplo.com', '(11) 90000-0000', false, true]);
   }
-
-  const crianca = ss.getSheetByName(ABA_CRIANCAS) || ss.insertSheet(ABA_CRIANCAS);
-  if (crianca.getLastRow() === 0) {
-    crianca.appendRow(['ID', 'Nome', 'Funcao']);
-  }
-
-  const vinc = ss.getSheetByName(ABA_VINCULOS) || ss.insertSheet(ABA_VINCULOS);
-  if (vinc.getLastRow() === 0) {
-    vinc.appendRow(['ResponsavelID', 'CriancaID']);
-  }
-
-  const missas = ss.getSheetByName(ABA_MISSAS) || ss.insertSheet(ABA_MISSAS);
-  if (missas.getLastRow() === 0) {
-    missas.appendRow(['Data', 'Horario', 'Descricao',
-      'MinCoroinha', 'MaxCoroinha', 'CoroinhasEscalados',
-      'MinCerimoniario', 'MaxCerimoniario', 'CerimoniariosEscalados']);
-  }
-
-  const reset = ss.getSheetByName(ABA_RESET) || ss.insertSheet(ABA_RESET);
-  if (reset.getLastRow() === 0) {
-    reset.appendRow(['Token', 'ResponsavelID', 'ExpiraEm', 'Usado']);
-  }
+  abaOuNova_(ss, ABA_CRIANCAS, ['ID', 'Nome', 'Funcao', 'Tipo']);
+  abaOuNova_(ss, ABA_VINCULOS, ['ResponsavelID', 'CriancaID']);
+  abaOuNova_(ss, ABA_RESET, ['Token', 'ResponsavelID', 'ExpiraEm', 'Usado']);
+  abaOuNova_(ss, ABA_PASTORAIS, ['ID', 'Nome', 'CoordenadorID', 'Ativa']);
+  abaOuNova_(ss, ABA_FUNCOES, ['ID', 'PastoralID', 'Nome', 'MinPadrao', 'MaxPadrao']);
+  abaOuNova_(ss, ABA_MEMBROS, ['PessoaID', 'PastoralID', 'FuncaoID', 'Situacao']);
+  abaOuNova_(ss, ABA_EVENTOS, ['ID', 'Data', 'Horario', 'Descricao']);
+  abaOuNova_(ss, ABA_VAGAS, ['EventoID', 'FuncaoID', 'Minimo', 'Maximo', 'Escalados']);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -207,12 +219,40 @@ function gerarUsuario_(nomeCompleto, usuariosExistentes) {
   return usuario;
 }
 
+/** Dia da semana em português. O padrão 'u' do formatDate vai de 1 (segunda) a 7 (domingo). */
+function nomeDiaSemana_(data) {
+  const n = Number(Utilities.formatDate(data, Session.getScriptTimeZone(), 'u'));
+  return NOMES_DIA_SEMANA[n % 7];
+}
+
 function gerarToken_() {
   return Utilities.getUuid().replace(/-/g, '');
 }
 
 function urlDoApp_() {
   return ScriptApp.getService().getUrl();
+}
+
+/**
+ * Endereço do app novo (Expo/web), definido na propriedade de script APP_URL
+ * (ex.: https://escala-liturgica.vercel.app). Sem ela, os e-mails continuam apontando
+ * para o app antigo do Apps Script, então nada quebra enquanto o app novo não é publicado.
+ */
+function urlBaseAppNovo_() {
+  const url = String(PropertiesService.getScriptProperties().getProperty('APP_URL') || '').trim();
+  if (!/^https?:\/\/[^\s]+$/i.test(url)) return '';
+  return url.replace(/\/+$/, '');
+}
+
+/** Link para abrir o app, usado no e-mail de cadastro. */
+function urlAcesso_() {
+  return urlBaseAppNovo_() || urlDoApp_();
+}
+
+/** Link de redefinição de senha enviado por e-mail. */
+function linkRedefinicao_(token) {
+  const base = urlBaseAppNovo_();
+  return base ? base + '/redefinir-senha?token=' + token : urlDoApp_() + '?token=' + token;
 }
 
 function ehVerdadeiro_(v) {
@@ -343,25 +383,11 @@ function autenticar_(sessao) {
       nome: dados[i][1],
       email: dados[i][4],
       celular: dados[i][5],
-      coordenador: ehVerdadeiro_(dados[i][6]),
+      administrador: ehVerdadeiro_(dados[i][7]),
       senhaCelula: dados[i][3]
     };
   }
   throw new Error('SESSAO_INVALIDA');
-}
-
-function exigirCoordenador_(sessao) {
-  const u = autenticar_(sessao);
-  if (!u.coordenador) throw new Error('SEM_PERMISSAO');
-  return u;
-}
-
-function criancaDoResponsavel_(responsavelId, criancaId) {
-  const vinculos = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_VINCULOS).getDataRange().getValues();
-  for (let i = 1; i < vinculos.length; i++) {
-    if (String(vinculos[i][0]) === String(responsavelId) && String(vinculos[i][1]) === String(criancaId)) return true;
-  }
-  return false;
 }
 
 /* ---------- limites de tentativas (CacheService) ---------- */
@@ -400,7 +426,7 @@ function validarLogin(usuario, senha) {
   const dados = sheet.getDataRange().getValues();
 
   for (let i = 1; i < dados.length; i++) {
-    const [id, nome, usr, senhaPlanilha, email, celular, coordenador] = dados[i];
+    const [id, nome, usr, senhaPlanilha] = dados[i];
     if (String(usr).trim().toLowerCase() !== usuarioBusca) continue;
 
     const r = conferirSenha_(senhaPlanilha, senhaBusca);
@@ -413,7 +439,7 @@ function validarLogin(usuario, senha) {
     }
     CacheService.getScriptCache().remove(chave);
 
-    return montarRespostaLogin_({ id: id, nome: nome, coordenador: ehVerdadeiro_(coordenador) },
+    return montarRespostaLogin_({ id: id, nome: nome, administrador: ehVerdadeiro_(dados[i][7]) },
       criarSessao_(id, celulaSenha));
   }
 
@@ -432,36 +458,55 @@ function validarSessao(sessao) {
 }
 
 function montarRespostaLogin_(resp, token) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const vinculos = ss.getSheetByName(ABA_VINCULOS).getDataRange().getValues();
-  const criancasDados = ss.getSheetByName(ABA_CRIANCAS).getDataRange().getValues();
-
+  const pastorais = lerPastorais_().filter(function (p) { return p.ativa; });
+  const pastoralPorId = {};
+  pastorais.forEach(function (p) { pastoralPorId[p.id] = p; });
   const funcaoPorId = {};
-  const nomePorId = {};
-  for (let i = 1; i < criancasDados.length; i++) {
-    const [id, nome, funcao] = criancasDados[i];
-    if (id) { funcaoPorId[id] = funcao; nomePorId[id] = nome; }
-  }
+  lerFuncoes_().forEach(function (f) { funcaoPorId[f.id] = f; });
+  const pessoasMapa = lerPessoas_();
+  const membros = lerMembros_();
+  const respId = String(resp.id);
 
-  const criancas = [];
-  for (let i = 1; i < vinculos.length; i++) {
-    const [responsavelId, criancaId] = vinculos[i];
-    if (String(responsavelId) === String(resp.id)) {
-      criancas.push({ id: criancaId, nome: nomePorId[criancaId], funcao: funcaoPorId[criancaId] });
-    }
-  }
+  const pessoas = [];
+  lerVinculos_().forEach(function (v) {
+    if (v.responsavelId !== respId) return;
+    const p = pessoasMapa[v.pessoaId];
+    if (!p) return; // vínculo apontando para pessoa removida da planilha
+    pessoas.push({
+      id: p.id,
+      nome: p.nome,
+      tipo: p.tipo,
+      membros: membros
+        .filter(function (m) { return m.pessoaId === p.id && pastoralPorId[m.pastoralId] && funcaoPorId[m.funcaoId]; })
+        .map(function (m) {
+          return {
+            pastoralId: m.pastoralId, pastoral: pastoralPorId[m.pastoralId].nome,
+            funcaoId: m.funcaoId, funcao: funcaoPorId[m.funcaoId].nome, situacao: m.situacao
+          };
+        })
+    });
+  });
 
   return {
     sucesso: true,
     token: token,
-    responsavelId: resp.id,
+    responsavelId: respId,
     responsavel: resp.nome,
-    coordenador: resp.coordenador,
-    criancas: criancas
+    administrador: resp.administrador === true,
+    pastoraisCoordenadas: pastorais
+      .filter(function (p) { return p.coordenadorId === respId; })
+      .map(function (p) { return { id: p.id, nome: p.nome }; }),
+    pessoas: pessoas
   };
 }
 
-/** Cadastra um novo responsável e seus filhos, e já retorna logado. */
+/**
+ * Cadastra um novo responsável e já retorna logado.
+ * dados: { nome, email, celular, senha,
+ *          euSirvo: { pastoralId, funcaoId } | null,
+ *          filhos: [{ nome, pastoralId, funcaoId }] }
+ * Toda participação nasce "pendente" até o coordenador da pastoral aprovar.
+ */
 function cadastrarResponsavel(dados) {
   dados = dados || {};
   const nome = limparTexto_(dados.nome, 80);
@@ -469,19 +514,44 @@ function cadastrarResponsavel(dados) {
   const celular = String(dados.celular === null || dados.celular === undefined ? '' : dados.celular)
     .replace(/[^0-9 ()\-]/g, '').replace(/^[\-\s]+/, '').slice(0, 20);
   const senha = String(dados.senha === null || dados.senha === undefined ? '' : dados.senha).trim();
-  const filhosEntrada = Array.isArray(dados.filhos) ? dados.filhos.slice(0, 8) : [];
-  const filhos = filhosEntrada
-    .map(function (f) { return { nome: limparTexto_(f && f.nome, 80), funcao: f && f.funcao }; })
-    .filter(function (f) { return f.nome && FUNCOES_VALIDAS.indexOf(f.funcao) !== -1; });
 
-  if (!nome || !email || !senha || filhos.length === 0) {
-    return { sucesso: false, mensagem: 'Preencha nome, e-mail, senha e ao menos um filho.' };
+  if (!nome || !email || !senha) {
+    return { sucesso: false, mensagem: 'Preencha nome, e-mail e senha.' };
   }
   if (!REGEX_EMAIL.test(email)) {
     return { sucesso: false, mensagem: 'E-mail inválido.' };
   }
   if (senha.length < SENHA_MINIMA || senha.length > 100) {
     return { sucesso: false, mensagem: 'A senha deve ter entre ' + SENHA_MINIMA + ' e 100 caracteres.' };
+  }
+
+  const funcoes = funcoesAtivas_(lerPastorais_(), lerFuncoes_());
+  const funcaoValida = function (pastoralId, funcaoId) {
+    return funcoes.filter(function (f) {
+      return f.id === String(funcaoId) && f.pastoralId === String(pastoralId);
+    })[0] || null;
+  };
+
+  let eu = null;
+  const entradaEu = dados.euSirvo;
+  if (entradaEu && entradaEu.funcaoId) {
+    eu = funcaoValida(entradaEu.pastoralId, entradaEu.funcaoId);
+    if (!eu) return { sucesso: false, mensagem: 'Escolha a pastoral e a função em que você vai servir.' };
+  }
+
+  const filhosEntrada = Array.isArray(dados.filhos) ? dados.filhos.slice(0, 8) : [];
+  const filhos = [];
+  for (let i = 0; i < filhosEntrada.length; i++) {
+    const f = filhosEntrada[i] || {};
+    const nomeFilho = limparTexto_(f.nome, 80);
+    if (!nomeFilho) continue;
+    const funcao = funcaoValida(f.pastoralId, f.funcaoId);
+    if (!funcao) return { sucesso: false, mensagem: 'Escolha a pastoral e a função de ' + nomeFilho + '.' };
+    filhos.push({ nome: nomeFilho, funcao: funcao });
+  }
+
+  if (!eu && filhos.length === 0) {
+    return { sucesso: false, mensagem: 'Informe quem vai servir: você, um filho(a) ou os dois.' };
   }
 
   const chaveGlobal = 'rl_cadastro_global';
@@ -495,38 +565,46 @@ function cadastrarResponsavel(dados) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const respSheet = ss.getSheetByName(ABA_RESPONSAVEIS);
-    const criancaSheet = ss.getSheetByName(ABA_CRIANCAS);
+    const pessoaSheet = ss.getSheetByName(ABA_CRIANCAS);
     const vincSheet = ss.getSheetByName(ABA_VINCULOS);
+    const membrosSheet = ss.getSheetByName(ABA_MEMBROS);
 
-    const usuariosExistentes = respSheet.getDataRange().getValues().slice(1).map(r => r[2]);
+    const usuariosExistentes = respSheet.getDataRange().getValues().slice(1).map(function (r) { return r[2]; });
     const usuario = gerarUsuario_(nome, usuariosExistentes);
     const respId = proximoId_(respSheet, 'R');
     const celulaSenha = codificarSenha_(senha);
 
-    respSheet.appendRow([respId, nome, usuario, celulaSenha, email, celular, false]);
+    respSheet.appendRow([respId, nome, usuario, celulaSenha, email, celular, false, false]);
 
-    filhos.forEach(function (filho) {
-      const criancaId = proximoId_(criancaSheet, 'C');
-      criancaSheet.appendRow([criancaId, filho.nome, filho.funcao]);
-      vincSheet.appendRow([respId, criancaId]);
-    });
+    const pedidos = [];
+    const adicionarPessoa = function (nomePessoa, tipo, funcao) {
+      const pessoaId = proximoId_(pessoaSheet, 'C');
+      pessoaSheet.appendRow([pessoaId, nomePessoa, '', tipo]);
+      vincSheet.appendRow([respId, pessoaId]);
+      membrosSheet.appendRow([pessoaId, funcao.pastoralId, funcao.id, 'pendente']);
+      pedidos.push({ pastoralId: funcao.pastoralId, pessoaNome: nomePessoa, funcaoNome: funcao.nome });
+    };
+    if (eu) adicionarPessoa(nome, 'adulto', eu);
+    filhos.forEach(function (filho) { adicionarPessoa(filho.nome, 'crianca', filho.funcao); });
 
     try {
       MailApp.sendEmail({
         to: email,
-        subject: 'Cadastro realizado — Escala de Coroinhas e Cerimoniários',
+        subject: 'Cadastro realizado — Escala Litúrgica',
         body: 'Olá, ' + nome + '!\n\n' +
-          'Seu cadastro na escala de coroinhas e cerimoniários da ' + PARÓQUIA.nome + ' foi realizado com sucesso.\n\n' +
+          'Seu cadastro na escala litúrgica da ' + PARÓQUIA.nome + ' foi realizado com sucesso.\n\n' +
           'Seu usuário de acesso é: ' + usuario + '\n' +
           'Guarde esse usuário — você vai usá-lo para entrar no app junto com a senha que cadastrou.\n\n' +
-          'Acesse pelo link: ' + urlDoApp_() + '\n\n' +
+          'O coordenador de cada pastoral vai aprovar a participação. Você acompanha pelo app.\n\n' +
+          'Acesse pelo link: ' + urlAcesso_() + '\n\n' +
           PARÓQUIA.nome + '\n' + PARÓQUIA.endereco + '\n' + PARÓQUIA.telefone
       });
     } catch (err) {
       // não bloqueia o cadastro se o envio de e-mail falhar
     }
+    avisarCoordenadoresDePedidos_(pedidos);
 
-    const resposta = montarRespostaLogin_({ id: respId, nome: nome, coordenador: false },
+    const resposta = montarRespostaLogin_({ id: respId, nome: nome, administrador: false },
       criarSessao_(respId, celulaSenha));
     resposta.usuario = usuario;
     return resposta;
@@ -569,10 +647,10 @@ function solicitarRecuperacaoSenha(usuario) {
   const expiraEm = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
   resetSheet.appendRow([token, encontrado.id, expiraEm, false]);
 
-  const link = urlDoApp_() + '?token=' + token;
+  const link = linkRedefinicao_(token);
   MailApp.sendEmail({
     to: encontrado.email,
-    subject: 'Redefinição de senha — Escala de Coroinhas e Cerimoniários',
+    subject: 'Redefinição de senha — Escala Litúrgica',
     body: 'Olá, ' + encontrado.nome + '!\n\n' +
       'Recebemos um pedido para redefinir sua senha. Clique no link abaixo (válido por 1 hora):\n\n' +
       link + '\n\n' +
@@ -628,266 +706,658 @@ function redefinirSenha(token, novaSenha) {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Missas — visão dos responsáveis                                        */
+/* Modelo multi-pastoral: leitura das abas                                */
 /* ---------------------------------------------------------------------- */
 
-function lerMissasBrutas_() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_MISSAS);
-  const dados = sheet.getDataRange().getValues();
-  const agora = new Date();
+function valoresAba_(nome) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nome);
+  return sheet ? sheet.getDataRange().getValues() : [];
+}
 
-  const partir = v => v ? String(v).split(',').map(s => s.trim()).filter(Boolean) : [];
-  const missas = [];
+function partirIds_(valor) {
+  return valor ? String(valor).split(',').map(function (s) { return s.trim(); }).filter(Boolean) : [];
+}
+
+function formatarData_(data) {
+  return Utilities.formatDate(data, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+}
+
+function lerPastorais_() {
+  const dados = valoresAba_(ABA_PASTORAIS);
+  const lista = [];
   for (let i = 1; i < dados.length; i++) {
-    const [data, horario, descricao, minCoroinha, maxCoroinha, coroinhas,
-      minCerim, maxCerim, cerimoniarios] = dados[i];
-    if (!data) continue;
-    const dataObj = new Date(data);
-    if (isNaN(dataObj)) continue;
-
-    // Extrai hora/minuto do campo Horário (pode vir como Date ou texto "HH:mm")
-    let horas = 0, minutos = 0, horarioTexto = '';
-    if (Object.prototype.toString.call(horario) === '[object Date]' && !isNaN(horario)) {
-      horas = horario.getHours();
-      minutos = horario.getMinutes();
-      horarioTexto = Utilities.formatDate(horario, Session.getScriptTimeZone(), 'HH:mm');
-    } else if (horario) {
-      const partes = String(horario).split(':');
-      horas = Number(partes[0]) || 0;
-      minutos = Number(partes[1]) || 0;
-      horarioTexto = String(horario);
-    }
-
-    // Combina data + horário num instante único para comparar com "agora"
-    const dataHora = new Date(dataObj.getFullYear(), dataObj.getMonth(), dataObj.getDate(), horas, minutos);
-    if (dataHora < agora) continue; // já passou, mesmo que seja hoje
-
-    missas.push({
-      linha: i + 1,
-      data: Utilities.formatDate(dataObj, Session.getScriptTimeZone(), 'dd/MM/yyyy'),
-      diaSemana: Utilities.formatDate(dataObj, Session.getScriptTimeZone(), 'EEEE'),
-      dataOrdenacao: dataHora.getTime(),
-      horario: horarioTexto,
-      descricao: descricao,
-      minCoroinha: Number(minCoroinha) || 0,
-      maxCoroinha: Number(maxCoroinha) || 0,
-      coroinhas: partir(coroinhas),
-      minCerimoniario: Number(minCerim) || 0,
-      maxCerimoniario: Number(maxCerim) || 0,
-      cerimoniarios: partir(cerimoniarios)
+    const id = dados[i][0];
+    if (!id) continue;
+    const ativa = dados[i][3];
+    lista.push({
+      id: String(id),
+      nome: String(dados[i][1] || ''),
+      coordenadorId: String(dados[i][2] || ''),
+      ativa: ativa === '' || ativa === undefined || ativa === null ? true : ehVerdadeiro_(ativa),
+      linha: i + 1
     });
   }
-  missas.sort((a, b) => a.dataOrdenacao - b.dataOrdenacao);
-  return missas;
+  return lista;
 }
 
-function listarMissas(sessao) {
-  autenticar_(sessao);
-  return lerMissasBrutas_();
-}
-
-/** Confere se a criança existe, se a função confere e se quem chama pode mexer nela. */
-function validarAlvoEscala_(u, criancaId, funcao) {
-  if (FUNCOES_VALIDAS.indexOf(funcao) === -1) return { sucesso: false, mensagem: 'Função inválida.' };
-  criancaId = String(criancaId === null || criancaId === undefined ? '' : criancaId);
-
-  if (!u.coordenador && !criancaDoResponsavel_(u.id, criancaId)) throw new Error('SEM_PERMISSAO');
-
-  const crianca = mapaCriancas_()[criancaId];
-  const norm = s => removerAcentos_(String(s === null || s === undefined ? '' : s)).trim().toLowerCase();
-  if (!crianca || norm(crianca.funcao) !== norm(funcao)) {
-    return { sucesso: false, mensagem: 'Criança ou função inválida.' };
+function lerFuncoes_() {
+  const dados = valoresAba_(ABA_FUNCOES);
+  const lista = [];
+  for (let i = 1; i < dados.length; i++) {
+    const id = dados[i][0];
+    if (!id) continue;
+    lista.push({
+      id: String(id),
+      pastoralId: String(dados[i][1] || ''),
+      nome: String(dados[i][2] || ''),
+      minimo: Number(dados[i][3]) || 0,
+      maximo: Number(dados[i][4]) || 0,
+      linha: i + 1
+    });
   }
-  return null;
+  return lista;
 }
 
-function inscrever(sessao, linha, criancaId, funcao) {
-  const u = autenticar_(sessao);
-  linha = Number(linha);
-  const erro = validarAlvoEscala_(u, criancaId, funcao);
-  if (erro) return erro;
-
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_MISSAS);
-    if (!linhaValida_(sheet, linha)) return { sucesso: false, mensagem: 'Missa não encontrada. Atualize a lista.' };
-
-    const colVagas = funcao === 'Coroinha' ? 5 : 8;
-    const colLista = funcao === 'Coroinha' ? 6 : 9;
-
-    const vagas = Number(sheet.getRange(linha, colVagas).getValue()) || 0;
-    const atual = sheet.getRange(linha, colLista).getValue();
-    const ids = atual ? String(atual).split(',').map(s => s.trim()).filter(Boolean) : [];
-
-    if (ids.includes(String(criancaId))) {
-      return { sucesso: false, mensagem: 'Essa criança já está escalada nessa missa.' };
-    }
-    if (ids.length >= vagas) {
-      return { sucesso: false, mensagem: 'Não há mais vagas para essa função nessa missa.' };
-    }
-
-    ids.push(String(criancaId));
-    sheet.getRange(linha, colLista).setValue(ids.join(', '));
-    return { sucesso: true };
-  } finally {
-    lock.releaseLock();
+function lerMembros_() {
+  const dados = valoresAba_(ABA_MEMBROS);
+  const lista = [];
+  for (let i = 1; i < dados.length; i++) {
+    if (!dados[i][0]) continue;
+    lista.push({
+      pessoaId: String(dados[i][0]),
+      pastoralId: String(dados[i][1] || ''),
+      funcaoId: String(dados[i][2] || ''),
+      situacao: String(dados[i][3] || '').toLowerCase() === 'pendente' ? 'pendente' : 'ativo',
+      linha: i + 1
+    });
   }
+  return lista;
 }
 
-function cancelar(sessao, linha, criancaId, funcao) {
-  const u = autenticar_(sessao);
-  linha = Number(linha);
-  const erro = validarAlvoEscala_(u, criancaId, funcao);
-  if (erro) return erro;
-
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_MISSAS);
-    if (!linhaValida_(sheet, linha)) return { sucesso: false, mensagem: 'Missa não encontrada. Atualize a lista.' };
-
-    const colLista = funcao === 'Coroinha' ? 6 : 9;
-
-    const atual = sheet.getRange(linha, colLista).getValue();
-    let ids = atual ? String(atual).split(',').map(s => s.trim()).filter(Boolean) : [];
-    ids = ids.filter(id => id !== String(criancaId));
-    sheet.getRange(linha, colLista).setValue(ids.join(', '));
-    return { sucesso: true };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/* ---------------------------------------------------------------------- */
-/* Painel do coordenador (todas exigem sessão de coordenador)             */
-/* ---------------------------------------------------------------------- */
-
-function mapaCriancas_() {
-  const dados = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_CRIANCAS).getDataRange().getValues();
+function lerPessoas_() {
+  const dados = valoresAba_(ABA_CRIANCAS);
   const mapa = {};
   for (let i = 1; i < dados.length; i++) {
-    const [id, nome, funcao] = dados[i];
-    if (id) mapa[id] = { nome, funcao };
+    const id = dados[i][0];
+    if (!id) continue;
+    mapa[String(id)] = {
+      id: String(id),
+      nome: String(dados[i][1] || ''),
+      tipo: String(dados[i][3] || '').toLowerCase() === 'adulto' ? 'adulto' : 'crianca'
+    };
   }
   return mapa;
 }
 
-/** Lista todas as crianças cadastradas (uso do coordenador, para escalar manualmente). */
-function listarCriancas(sessao) {
-  exigirCoordenador_(sessao);
-  const dados = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_CRIANCAS).getDataRange().getValues();
+function lerVinculos_() {
+  const dados = valoresAba_(ABA_VINCULOS);
   const lista = [];
   for (let i = 1; i < dados.length; i++) {
-    const [id, nome, funcao] = dados[i];
-    if (id) lista.push({ id: id, nome: nome, funcao: funcao });
+    if (dados[i][0] && dados[i][1]) lista.push({ responsavelId: String(dados[i][0]), pessoaId: String(dados[i][1]) });
   }
-  lista.sort((a, b) => String(a.nome).localeCompare(String(b.nome)));
   return lista;
 }
 
-/** Como listarMissas(), mas com nomes das crianças resolvidos. */
-function listarMissasParaCoordenador(sessao) {
-  exigirCoordenador_(sessao);
-  const missas = lerMissasBrutas_();
-  const criancas = mapaCriancas_();
+function lerResponsaveis_() {
+  const dados = valoresAba_(ABA_RESPONSAVEIS);
+  const mapa = {};
+  for (let i = 1; i < dados.length; i++) {
+    const id = dados[i][0];
+    if (!id) continue;
+    mapa[String(id)] = {
+      id: String(id), nome: String(dados[i][1] || ''), usuario: String(dados[i][2] || ''),
+      email: String(dados[i][4] || ''), celular: dados[i][5], administrador: ehVerdadeiro_(dados[i][7])
+    };
+  }
+  return mapa;
+}
 
-  return missas.map(function (m) {
-    return Object.assign({}, m, {
-      coroinhasNomes: m.coroinhas.map(id => (criancas[id] ? criancas[id].nome : '(?)')),
-      cerimoniariosNomes: m.cerimoniarios.map(id => (criancas[id] ? criancas[id].nome : '(?)')),
-      abaixoMinCoroinha: m.coroinhas.length < m.minCoroinha,
-      abaixoMinCerimoniario: m.cerimoniarios.length < m.minCerimoniario
+/** Funções de pastorais ativas, já com o nome da pastoral. */
+function funcoesAtivas_(pastorais, funcoes) {
+  const porId = {};
+  pastorais.forEach(function (p) { if (p.ativa) porId[p.id] = p; });
+  return funcoes
+    .filter(function (f) { return porId[f.pastoralId]; })
+    .map(function (f) { return Object.assign({}, f, { pastoral: porId[f.pastoralId].nome }); });
+}
+
+/** Lê o horário de uma célula (Date ou texto) e devolve { horas, minutos, texto }. */
+function lerHorario_(horario) {
+  let horas = 0, minutos = 0, texto = '';
+  if (Object.prototype.toString.call(horario) === '[object Date]' && !isNaN(horario)) {
+    horas = horario.getHours();
+    minutos = horario.getMinutes();
+    texto = Utilities.formatDate(horario, Session.getScriptTimeZone(), 'HH:mm');
+  } else if (horario) {
+    const partes = String(horario).split(':');
+    horas = Number(partes[0]) || 0;
+    minutos = Number(partes[1]) || 0;
+    texto = String(horario);
+  }
+  return { horas: horas, minutos: minutos, texto: texto };
+}
+
+/** Eventos da aba Eventos. Por padrão só os que ainda não aconteceram, em ordem de data. */
+function lerEventos_(incluirPassados) {
+  const dados = valoresAba_(ABA_EVENTOS);
+  const agora = new Date();
+  const eventos = [];
+  for (let i = 1; i < dados.length; i++) {
+    const id = dados[i][0];
+    if (!id || !dados[i][1]) continue;
+    const dataObj = new Date(dados[i][1]);
+    if (isNaN(dataObj)) continue;
+    const h = lerHorario_(dados[i][2]);
+    const dataHora = new Date(dataObj.getFullYear(), dataObj.getMonth(), dataObj.getDate(), h.horas, h.minutos);
+    if (!incluirPassados && dataHora < agora) continue;
+    eventos.push({
+      id: String(id),
+      linha: i + 1,
+      data: formatarData_(dataObj),
+      diaSemana: nomeDiaSemana_(dataObj),
+      dataOrdenacao: dataHora.getTime(),
+      horario: h.texto,
+      descricao: dados[i][3] === null || dados[i][3] === undefined ? '' : String(dados[i][3])
+    });
+  }
+  eventos.sort(function (a, b) { return a.dataOrdenacao - b.dataOrdenacao; });
+  return eventos;
+}
+
+function lerVagasMapa_() {
+  const dados = valoresAba_(ABA_VAGAS);
+  const mapa = {};
+  for (let i = 1; i < dados.length; i++) {
+    if (!dados[i][0] || !dados[i][1]) continue;
+    mapa[String(dados[i][0]) + '|' + String(dados[i][1])] = {
+      linha: i + 1,
+      minimo: Number(dados[i][2]) || 0,
+      maximo: Number(dados[i][3]) || 0,
+      escalados: partirIds_(dados[i][4])
+    };
+  }
+  return mapa;
+}
+
+/** Vaga de uma função em um evento: a linha da aba Vagas, ou o padrão da função quando não existe. */
+function vagaDe_(mapa, eventoId, funcao) {
+  const linha = mapa[eventoId + '|' + funcao.id];
+  return {
+    funcaoId: funcao.id,
+    funcao: funcao.nome,
+    pastoralId: funcao.pastoralId,
+    pastoral: funcao.pastoral,
+    minimo: linha ? linha.minimo : funcao.minimo,
+    maximo: linha ? linha.maximo : funcao.maximo,
+    escalados: linha ? linha.escalados.slice() : []
+  };
+}
+
+/**
+ * Eventos futuros com as vagas das funções informadas.
+ * `filtroPastoralIds`: se informado, só as vagas dessas pastorais.
+ */
+function eventosComVagas_(filtroPastoralIds, incluirPassados) {
+  const funcoes = funcoesAtivas_(lerPastorais_(), lerFuncoes_()).filter(function (f) {
+    return !filtroPastoralIds || filtroPastoralIds.indexOf(f.pastoralId) !== -1;
+  });
+  const mapa = lerVagasMapa_();
+  return lerEventos_(incluirPassados).map(function (e) {
+    return {
+      id: e.id,
+      data: e.data,
+      diaSemana: e.diaSemana,
+      dataOrdenacao: e.dataOrdenacao,
+      horario: e.horario,
+      descricao: e.descricao,
+      vagas: funcoes.map(function (f) { return vagaDe_(mapa, e.id, f); })
+    };
+  });
+}
+
+function nomesPorId_(ids, pessoas) {
+  return ids.map(function (id) { return pessoas[id] ? pessoas[id].nome : '(?)'; });
+}
+
+/** Grava (ou cria) a linha de vaga. Chamar dentro do lock. */
+function gravarVaga_(eventoId, funcaoId, minimo, maximo, escalados) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_VAGAS);
+  const dados = sheet.getDataRange().getValues();
+  for (let i = 1; i < dados.length; i++) {
+    if (String(dados[i][0]) === eventoId && String(dados[i][1]) === funcaoId) {
+      sheet.getRange(i + 1, 3).setValue(minimo);
+      sheet.getRange(i + 1, 4).setValue(maximo);
+      sheet.getRange(i + 1, 5).setValue(escalados.join(', '));
+      return;
+    }
+  }
+  sheet.appendRow([eventoId, funcaoId, minimo, maximo, escalados.join(', ')]);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Permissões                                                             */
+/* ---------------------------------------------------------------------- */
+
+function exigirAdministrador_(sessao) {
+  const u = autenticar_(sessao);
+  if (!u.administrador) throw new Error('SEM_PERMISSAO');
+  return u;
+}
+
+/** Coordenador **desta** pastoral (não basta ser coordenador de outra). */
+function exigirCoordenadorDe_(sessao, pastoralId) {
+  const u = autenticar_(sessao);
+  const id = String(pastoralId === null || pastoralId === undefined ? '' : pastoralId);
+  const pastoral = lerPastorais_().filter(function (p) { return p.id === id; })[0];
+  if (!pastoral || !pastoral.ativa || pastoral.coordenadorId !== String(u.id)) throw new Error('SEM_PERMISSAO');
+  return { u: u, pastoral: pastoral };
+}
+
+function responsavelTemPessoa_(responsavelId, pessoaId) {
+  return lerVinculos_().some(function (v) { return v.responsavelId === String(responsavelId) && v.pessoaId === pessoaId; });
+}
+
+/* ---------------------------------------------------------------------- */
+/* Pastorais abertas ao cadastro                                          */
+/* ---------------------------------------------------------------------- */
+
+/** Pastorais ativas e suas funções. Sem sessão: é o que a tela de cadastro precisa. */
+function listarPastoraisPublico() {
+  const pastorais = lerPastorais_().filter(function (p) { return p.ativa; });
+  const funcoes = lerFuncoes_();
+  return pastorais.map(function (p) {
+    return {
+      id: p.id,
+      nome: p.nome,
+      funcoes: funcoes
+        .filter(function (f) { return f.pastoralId === p.id; })
+        .map(function (f) { return { id: f.id, nome: f.nome }; })
+    };
+  });
+}
+
+/* ---------------------------------------------------------------------- */
+/* Missas: visão dos responsáveis                                         */
+/* ---------------------------------------------------------------------- */
+
+/** Pastorais em que alguma pessoa do responsável participa (participação aprovada). */
+function pastoraisDoResponsavel_(responsavelId) {
+  const pessoasDele = {};
+  lerVinculos_().forEach(function (v) { if (v.responsavelId === String(responsavelId)) pessoasDele[v.pessoaId] = true; });
+  const ids = {};
+  lerMembros_().forEach(function (m) {
+    if (pessoasDele[m.pessoaId] && m.situacao === 'ativo') ids[m.pastoralId] = true;
+  });
+  return Object.keys(ids);
+}
+
+/**
+ * Missas futuras com as vagas das pastorais em que a família participa.
+ * Só ids de pessoas: nomes de outras famílias não saem daqui.
+ */
+function listarMissas(sessao) {
+  const u = autenticar_(sessao);
+  const pastoralIds = pastoraisDoResponsavel_(u.id);
+  if (pastoralIds.length === 0) {
+    return eventosComVagas_([], false).map(function (e) { return Object.assign({}, e, { vagas: [] }); });
+  }
+  return eventosComVagas_(pastoralIds, false);
+}
+
+/** Confere permissão e participação ativa. Devolve { erro } ou { funcao }. */
+function validarAlvoEscala_(u, pessoaId, funcaoId) {
+  pessoaId = String(pessoaId === null || pessoaId === undefined ? '' : pessoaId);
+  funcaoId = String(funcaoId === null || funcaoId === undefined ? '' : funcaoId);
+
+  const funcoes = funcoesAtivas_(lerPastorais_(), lerFuncoes_());
+  const funcao = funcoes.filter(function (f) { return f.id === funcaoId; })[0];
+  if (!funcao) return { erro: { sucesso: false, mensagem: 'Função inválida.' } };
+
+  const dono = responsavelTemPessoa_(u.id, pessoaId);
+  const pastoral = lerPastorais_().filter(function (p) { return p.id === funcao.pastoralId; })[0];
+  const coordena = !!pastoral && pastoral.coordenadorId === String(u.id);
+  if (!dono && !coordena) throw new Error('SEM_PERMISSAO');
+
+  const membro = lerMembros_().filter(function (m) {
+    return m.pessoaId === pessoaId && m.funcaoId === funcaoId && m.situacao === 'ativo';
+  })[0];
+  if (!membro) return { erro: { sucesso: false, mensagem: 'Essa pessoa ainda não faz parte dessa função.' } };
+  return { funcao: funcao };
+}
+
+function inscrever(sessao, eventoId, pessoaId, funcaoId) {
+  const u = autenticar_(sessao);
+  eventoId = String(eventoId === null || eventoId === undefined ? '' : eventoId);
+  const alvo = validarAlvoEscala_(u, pessoaId, funcaoId);
+  if (alvo.erro) return alvo.erro;
+  pessoaId = String(pessoaId);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const evento = lerEventos_(true).filter(function (e) { return e.id === eventoId; })[0];
+    if (!evento) return { sucesso: false, mensagem: 'Missa não encontrada. Atualize a lista.' };
+
+    const vaga = vagaDe_(lerVagasMapa_(), eventoId, alvo.funcao);
+    if (vaga.escalados.indexOf(pessoaId) !== -1) {
+      return { sucesso: false, mensagem: 'Essa pessoa já está escalada nessa missa.' };
+    }
+    if (vaga.escalados.length >= vaga.maximo) {
+      return { sucesso: false, mensagem: 'Não há mais vagas para essa função nessa missa.' };
+    }
+    vaga.escalados.push(pessoaId);
+    gravarVaga_(eventoId, alvo.funcao.id, vaga.minimo, vaga.maximo, vaga.escalados);
+    return { sucesso: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function cancelar(sessao, eventoId, pessoaId, funcaoId) {
+  const u = autenticar_(sessao);
+  eventoId = String(eventoId === null || eventoId === undefined ? '' : eventoId);
+  const alvo = validarAlvoEscala_(u, pessoaId, funcaoId);
+  if (alvo.erro) return alvo.erro;
+  pessoaId = String(pessoaId);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const evento = lerEventos_(true).filter(function (e) { return e.id === eventoId; })[0];
+    if (!evento) return { sucesso: false, mensagem: 'Missa não encontrada. Atualize a lista.' };
+
+    const vaga = vagaDe_(lerVagasMapa_(), eventoId, alvo.funcao);
+    const restantes = vaga.escalados.filter(function (id) { return id !== pessoaId; });
+    if (restantes.length !== vaga.escalados.length) {
+      gravarVaga_(eventoId, alvo.funcao.id, vaga.minimo, vaga.maximo, restantes);
+    }
+    return { sucesso: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Entrada em pastoral                                                    */
+/* ---------------------------------------------------------------------- */
+
+function avisarCoordenadoresDePedidos_(pedidos) {
+  // pedidos: [{ pastoralId, pessoaNome, funcaoNome }]
+  try {
+    const pastorais = lerPastorais_();
+    const responsaveis = lerResponsaveis_();
+    const porCoordenador = {};
+    pedidos.forEach(function (p) {
+      const pastoral = pastorais.filter(function (x) { return x.id === p.pastoralId; })[0];
+      if (!pastoral || !pastoral.coordenadorId) return;
+      const coord = responsaveis[pastoral.coordenadorId];
+      if (!coord || !REGEX_EMAIL.test(coord.email)) return;
+      const chave = coord.id;
+      porCoordenador[chave] = porCoordenador[chave] || { coord: coord, linhas: [] };
+      porCoordenador[chave].linhas.push('- ' + p.pessoaNome + ' quer servir como ' + p.funcaoNome + ' (' + pastoral.nome + ')');
+    });
+    Object.keys(porCoordenador).forEach(function (k) {
+      const item = porCoordenador[k];
+      MailApp.sendEmail({
+        to: item.coord.email,
+        subject: 'Novo pedido de entrada na sua pastoral — ' + PARÓQUIA.nome,
+        body: 'Olá, ' + item.coord.nome + '!\n\n' + item.linhas.join('\n') +
+          '\n\nEntre no app, abra o Painel e aprove ou recuse em "Membros".\n\n' + PARÓQUIA.nome
+      });
+    });
+  } catch (err) {
+    // aviso é cortesia: não bloqueia o cadastro nem o pedido
+  }
+}
+
+/** Uma pessoa do responsável pede para fazer parte de uma função. Fica pendente. */
+function solicitarEntrada(sessao, pessoaId, funcaoId) {
+  const u = autenticar_(sessao);
+  pessoaId = String(pessoaId === null || pessoaId === undefined ? '' : pessoaId);
+  funcaoId = String(funcaoId === null || funcaoId === undefined ? '' : funcaoId);
+  if (!responsavelTemPessoa_(u.id, pessoaId)) throw new Error('SEM_PERMISSAO');
+
+  const funcao = funcoesAtivas_(lerPastorais_(), lerFuncoes_()).filter(function (f) { return f.id === funcaoId; })[0];
+  if (!funcao) return { sucesso: false, mensagem: 'Função inválida.' };
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const ja = lerMembros_().some(function (m) { return m.pessoaId === pessoaId && m.funcaoId === funcaoId; });
+    if (ja) return { sucesso: false, mensagem: 'Essa pessoa já participa, ou já pediu para participar, dessa função.' };
+
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_MEMBROS)
+      .appendRow([pessoaId, funcao.pastoralId, funcao.id, 'pendente']);
+    const pessoa = lerPessoas_()[pessoaId];
+    avisarCoordenadoresDePedidos_([{ pastoralId: funcao.pastoralId, pessoaNome: pessoa ? pessoa.nome : '', funcaoNome: funcao.nome }]);
+    return { sucesso: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Coordenação (cada ação exige ser coordenador da pastoral informada)    */
+/* ---------------------------------------------------------------------- */
+
+/** Membros e pedidos pendentes da pastoral. Pendentes primeiro. */
+function listarMembros(sessao, pastoralId) {
+  const ctx = exigirCoordenadorDe_(sessao, pastoralId);
+  const pessoas = lerPessoas_();
+  const funcoes = lerFuncoes_();
+  const responsaveis = lerResponsaveis_();
+  const vinculos = lerVinculos_();
+
+  const lista = lerMembros_()
+    .filter(function (m) { return m.pastoralId === ctx.pastoral.id && pessoas[m.pessoaId]; })
+    .map(function (m) {
+      const f = funcoes.filter(function (x) { return x.id === m.funcaoId; })[0];
+      const donos = vinculos
+        .filter(function (v) { return v.pessoaId === m.pessoaId; })
+        .map(function (v) { return responsaveis[v.responsavelId] ? responsaveis[v.responsavelId].nome : ''; })
+        .filter(Boolean);
+      return {
+        pessoaId: m.pessoaId,
+        nome: pessoas[m.pessoaId].nome,
+        tipo: pessoas[m.pessoaId].tipo,
+        funcaoId: m.funcaoId,
+        funcao: f ? f.nome : '',
+        situacao: m.situacao,
+        responsavel: donos.join(', ')
+      };
+    });
+  lista.sort(function (a, b) {
+    if (a.situacao !== b.situacao) return a.situacao === 'pendente' ? -1 : 1;
+    return String(a.nome).localeCompare(String(b.nome));
+  });
+  return lista;
+}
+
+/** dados: { pessoaId, funcaoId, aprovar: true|false }. Recusar apaga o pedido. */
+function decidirEntrada(sessao, pastoralId, dados) {
+  const ctx = exigirCoordenadorDe_(sessao, pastoralId);
+  dados = dados || {};
+  const pessoaId = String(dados.pessoaId === null || dados.pessoaId === undefined ? '' : dados.pessoaId);
+  const funcaoId = String(dados.funcaoId === null || dados.funcaoId === undefined ? '' : dados.funcaoId);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const m = lerMembros_().filter(function (x) {
+      return x.pessoaId === pessoaId && x.funcaoId === funcaoId && x.pastoralId === ctx.pastoral.id && x.situacao === 'pendente';
+    })[0];
+    if (!m) return { sucesso: false, mensagem: 'Pedido não encontrado. Atualize a lista.' };
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_MEMBROS);
+    if (dados.aprovar === true) sheet.getRange(m.linha, 4).setValue('ativo');
+    else sheet.deleteRow(m.linha);
+    return { sucesso: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** dados: { pessoaId, funcaoId }. Tira a pessoa da função e das escalas futuras dela. */
+function removerMembro(sessao, pastoralId, dados) {
+  const ctx = exigirCoordenadorDe_(sessao, pastoralId);
+  dados = dados || {};
+  const pessoaId = String(dados.pessoaId === null || dados.pessoaId === undefined ? '' : dados.pessoaId);
+  const funcaoId = String(dados.funcaoId === null || dados.funcaoId === undefined ? '' : dados.funcaoId);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const m = lerMembros_().filter(function (x) {
+      return x.pessoaId === pessoaId && x.funcaoId === funcaoId && x.pastoralId === ctx.pastoral.id;
+    })[0];
+    if (!m) return { sucesso: false, mensagem: 'Membro não encontrado. Atualize a lista.' };
+
+    const mapa = lerVagasMapa_();
+    Object.keys(mapa).forEach(function (chave) {
+      if (chave.split('|')[1] !== funcaoId) return;
+      const v = mapa[chave];
+      if (v.escalados.indexOf(pessoaId) === -1) return;
+      gravarVaga_(chave.split('|')[0], funcaoId, v.minimo, v.maximo,
+        v.escalados.filter(function (id) { return id !== pessoaId; }));
+    });
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_MEMBROS).deleteRow(m.linha);
+    return { sucesso: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Missas futuras com as vagas da pastoral e os nomes de quem está escalado. */
+function listarMissasParaCoordenador(sessao, pastoralId) {
+  const ctx = exigirCoordenadorDe_(sessao, pastoralId);
+  const pessoas = lerPessoas_();
+  return eventosComVagas_([ctx.pastoral.id], false).map(function (e) {
+    return Object.assign({}, e, {
+      vagas: e.vagas.map(function (v) {
+        return Object.assign({}, v, { nomes: nomesPorId_(v.escalados, pessoas) });
+      })
     });
   });
 }
 
-function obterResumoCoordenador(sessao) {
-  exigirCoordenador_(sessao);
-  const missas = lerMissasBrutas_(); // já vem só com futuras, ordenadas
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  const respDados = ss.getSheetByName(ABA_RESPONSAVEIS).getDataRange().getValues();
-  const totalResponsaveis = Math.max(0, respDados.length - 1);
-
-  const criancasDados = ss.getSheetByName(ABA_CRIANCAS).getDataRange().getValues();
-  let totalCoroinhas = 0, totalCerimoniarios = 0;
-  for (let i = 1; i < criancasDados.length; i++) {
-    const funcao = criancasDados[i][2];
-    if (funcao === 'Coroinha') totalCoroinhas++;
-    else if (funcao === 'Cerimoniário') totalCerimoniarios++;
+/** limites: [{ funcaoId, minimo, maximo }]. Ajusta as vagas da pastoral nesta missa. */
+function ajustarVagas(sessao, pastoralId, eventoId, limites) {
+  const ctx = exigirCoordenadorDe_(sessao, pastoralId);
+  eventoId = String(eventoId === null || eventoId === undefined ? '' : eventoId);
+  if (!Array.isArray(limites) || limites.length === 0 || limites.length > 20) {
+    return { sucesso: false, mensagem: 'Informe os limites das vagas.' };
   }
+
+  const funcoes = lerFuncoes_().filter(function (f) { return f.pastoralId === ctx.pastoral.id; });
+  const novos = [];
+  for (let i = 0; i < limites.length; i++) {
+    const l = limites[i] || {};
+    const f = funcoes.filter(function (x) { return x.id === String(l.funcaoId); })[0];
+    if (!f) return { sucesso: false, mensagem: 'Função inválida.' };
+    const minimo = numeroLimitado_(l.minimo, 50);
+    const maximo = numeroLimitado_(l.maximo, 50);
+    if (minimo > maximo) {
+      return { sucesso: false, mensagem: 'Em ' + f.nome + ', o mínimo não pode ser maior que o máximo.' };
+    }
+    novos.push({ funcao: f, minimo: minimo, maximo: maximo });
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    if (!lerEventos_(true).some(function (e) { return e.id === eventoId; })) {
+      return { sucesso: false, mensagem: 'Missa não encontrada. Atualize a lista.' };
+    }
+    const mapa = lerVagasMapa_();
+    novos.forEach(function (n) {
+      const atual = mapa[eventoId + '|' + n.funcao.id];
+      gravarVaga_(eventoId, n.funcao.id, n.minimo, n.maximo, atual ? atual.escalados : []);
+    });
+    return { sucesso: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function obterResumoCoordenador(sessao, pastoralId) {
+  const ctx = exigirCoordenadorDe_(sessao, pastoralId);
+  const missas = eventosComVagas_([ctx.pastoral.id], false);
+  const membros = lerMembros_().filter(function (m) { return m.pastoralId === ctx.pastoral.id; });
+  const ativos = {};
+  let pendentes = 0;
+  membros.forEach(function (m) {
+    if (m.situacao === 'pendente') pendentes++;
+    else ativos[m.pessoaId] = true;
+  });
 
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const em7dias = new Date(hoje); em7dias.setDate(em7dias.getDate() + 7); em7dias.setHours(23, 59, 59, 999);
   const em3dias = new Date(hoje); em3dias.setDate(em3dias.getDate() + 3); em3dias.setHours(23, 59, 59, 999);
 
-  let totalMissasAbaixoMin = 0;
-  let vagasAbertas7dias = 0;
-  let somaEscalados = 0, somaMax = 0;
-  let proximaMissa = null;
-  const alertasUrgentes = [];
+  let abaixoDoMinimo = 0, abertas7dias = 0, somaEscalados = 0, somaMaximo = 0;
+  let proximo = null;
+  const alertas = [];
 
   missas.forEach(function (m) {
-    const dataObj = new Date(m.dataOrdenacao);
-    const abaixoMin = (m.coroinhas.length < m.minCoroinha) || (m.cerimoniarios.length < m.minCerimoniario);
-    if (abaixoMin) totalMissasAbaixoMin++;
+    const quando = new Date(m.dataOrdenacao);
+    if (m.vagas.some(function (v) { return v.escalados.length < v.minimo; })) abaixoDoMinimo++;
 
-    somaEscalados += m.coroinhas.length + m.cerimoniarios.length;
-    somaMax += m.maxCoroinha + m.maxCerimoniario;
+    let escalados = 0, maximo = 0;
+    m.vagas.forEach(function (v) {
+      escalados += v.escalados.length;
+      maximo += v.maximo;
+      if (quando <= em7dias) abertas7dias += Math.max(0, v.maximo - v.escalados.length);
+    });
+    somaEscalados += escalados;
+    somaMaximo += maximo;
 
-    if (dataObj <= em7dias) {
-      vagasAbertas7dias += Math.max(0, m.maxCoroinha - m.coroinhas.length) +
-        Math.max(0, m.maxCerimoniario - m.cerimoniarios.length);
-    }
-
-    if (!proximaMissa) {
-      proximaMissa = {
+    if (!proximo) {
+      proximo = {
         data: m.data, horario: m.horario, diaSemana: m.diaSemana, descricao: m.descricao,
-        coroinhas: m.coroinhas.length, minCoroinha: m.minCoroinha, maxCoroinha: m.maxCoroinha,
-        cerimoniarios: m.cerimoniarios.length, minCerimoniario: m.minCerimoniario, maxCerimoniario: m.maxCerimoniario
+        vagas: m.vagas.map(function (v) {
+          return { funcaoId: v.funcaoId, funcao: v.funcao, ocupadas: v.escalados.length, minimo: v.minimo, maximo: v.maximo };
+        })
       };
     }
 
-    if (dataObj <= em3dias) {
-      const totalEscalado = m.coroinhas.length + m.cerimoniarios.length;
-      const totalMax = m.maxCoroinha + m.maxCerimoniario;
-      const ocupacao = totalMax > 0 ? totalEscalado / totalMax : 1;
+    if (quando <= em3dias) {
+      const ocupacao = maximo > 0 ? escalados / maximo : 1;
       if (ocupacao < 0.5) {
-        alertasUrgentes.push({
-          linha: m.linha,
-          data: m.data, horario: m.horario, diaSemana: m.diaSemana,
-          coroinhas: m.coroinhas.length, maxCoroinha: m.maxCoroinha,
-          cerimoniarios: m.cerimoniarios.length, maxCerimoniario: m.maxCerimoniario,
-          ocupacaoPct: Math.round(ocupacao * 100)
+        alertas.push({
+          eventoId: m.id, data: m.data, horario: m.horario, diaSemana: m.diaSemana,
+          ocupacaoPct: Math.round(ocupacao * 100),
+          vagas: m.vagas.map(function (v) {
+            return { funcaoId: v.funcaoId, funcao: v.funcao, ocupadas: v.escalados.length, maximo: v.maximo };
+          })
         });
       }
     }
   });
 
   return {
-    totalMissasAbaixoMin: totalMissasAbaixoMin,
-    proximaMissa: proximaMissa,
-    vagasAbertas7dias: vagasAbertas7dias,
-    totalCoroinhas: totalCoroinhas,
-    totalCerimoniarios: totalCerimoniarios,
-    totalResponsaveis: totalResponsaveis,
-    taxaOcupacao: somaMax > 0 ? Math.round((somaEscalados / somaMax) * 100) : 0,
-    alertasUrgentes: alertasUrgentes
+    pastoral: { id: ctx.pastoral.id, nome: ctx.pastoral.nome },
+    missasAbaixoDoMinimo: abaixoDoMinimo,
+    vagasAbertas7dias: abertas7dias,
+    taxaOcupacao: somaMaximo > 0 ? Math.round((somaEscalados / somaMaximo) * 100) : 0,
+    totalMembros: Object.keys(ativos).length,
+    pendentes: pendentes,
+    proximo: proximo,
+    alertas: alertas
   };
 }
 
 function montarMensagemChamada_(dados) {
   const descricaoTexto = dados.descricao ? (' (' + dados.descricao + ')') : '';
   return TEMPLATE_MENSAGEM_CHAMADA
-    .replace('{responsavel}', () => dados.responsavel)
-    .replace('{funcao}', () => dados.funcao)
-    .replace('{diaSemana}', () => dados.diaSemana)
-    .replace('{data}', () => dados.data)
-    .replace('{horario}', () => dados.horario)
-    .replace('{descricaoTexto}', () => descricaoTexto)
-    .replace('{crianca}', () => dados.crianca)
-    .replace('{paroquia}', () => PARÓQUIA.nome);
+    .replace('{responsavel}', function () { return dados.responsavel; })
+    .replace('{funcao}', function () { return dados.funcao; })
+    .replace('{pastoral}', function () { return dados.pastoral; })
+    .replace('{diaSemana}', function () { return dados.diaSemana; })
+    .replace('{data}', function () { return dados.data; })
+    .replace('{horario}', function () { return dados.horario; })
+    .replace('{descricaoTexto}', function () { return descricaoTexto; })
+    .replace('{pessoa}', function () { return dados.pessoa; })
+    .replace('{paroquia}', function () { return PARÓQUIA.nome; });
 }
 
 function formatarTelefoneWhatsApp_(celular) {
@@ -902,157 +1372,338 @@ function formatarTelefoneWhatsApp_(celular) {
   return digitos;
 }
 
-/** Lista responsáveis de crianças da função X que estão livres (sem nenhuma missa futura), com link do WhatsApp pronto. */
-function obterResponsaveisParaChamar(sessao, linha, funcao) {
-  exigirCoordenador_(sessao);
-  linha = Number(linha);
-  if (FUNCOES_VALIDAS.indexOf(funcao) === -1) return [];
+/**
+ * Membros ativos da função que estão livres (sem nenhuma missa futura), com o link do WhatsApp
+ * do responsável já pronto. Só o coordenador da pastoral da função enxerga isto.
+ */
+function obterResponsaveisParaChamar(sessao, pastoralId, eventoId, funcaoId) {
+  const ctx = exigirCoordenadorDe_(sessao, pastoralId);
+  eventoId = String(eventoId === null || eventoId === undefined ? '' : eventoId);
+  funcaoId = String(funcaoId === null || funcaoId === undefined ? '' : funcaoId);
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const missas = lerMissasBrutas_();
-  const missa = missas.find(function (m) { return m.linha === linha; });
+  const funcao = lerFuncoes_().filter(function (f) { return f.id === funcaoId && f.pastoralId === ctx.pastoral.id; })[0];
+  if (!funcao) return [];
+  const missas = eventosComVagas_(null, false);
+  const missa = missas.filter(function (m) { return m.id === eventoId; })[0];
   if (!missa) return [];
 
-  const escaladosEmAlgumaMissa = {};
+  const ocupados = {};
   missas.forEach(function (m) {
-    m.coroinhas.forEach(function (id) { escaladosEmAlgumaMissa[id] = true; });
-    m.cerimoniarios.forEach(function (id) { escaladosEmAlgumaMissa[id] = true; });
+    m.vagas.forEach(function (v) { v.escalados.forEach(function (id) { ocupados[id] = true; }); });
   });
 
-  const criancasDados = ss.getSheetByName(ABA_CRIANCAS).getDataRange().getValues();
-  const criancasLivres = [];
-  for (let i = 1; i < criancasDados.length; i++) {
-    const [id, nome, funcaoCrianca] = criancasDados[i];
-    if (funcaoCrianca === funcao && id && !escaladosEmAlgumaMissa[id]) {
-      criancasLivres.push({ id: id, nome: nome });
-    }
-  }
+  const pessoas = lerPessoas_();
+  const responsaveis = lerResponsaveis_();
+  const vinculos = lerVinculos_();
 
-  const vinculos = ss.getSheetByName(ABA_VINCULOS).getDataRange().getValues();
-  const respDados = ss.getSheetByName(ABA_RESPONSAVEIS).getDataRange().getValues();
-  const respPorId = {};
-  for (let i = 1; i < respDados.length; i++) {
-    const [id, nome, usuario, senha, email, celular] = respDados[i];
-    respPorId[id] = { nome: nome, celular: celular };
-  }
+  const livres = lerMembros_().filter(function (m) {
+    return m.funcaoId === funcaoId && m.situacao === 'ativo' && !ocupados[m.pessoaId] && pessoas[m.pessoaId];
+  });
 
   const resultado = [];
-  criancasLivres.forEach(function (crianca) {
-    for (let i = 1; i < vinculos.length; i++) {
-      const [responsavelId, criancaId] = vinculos[i];
-      if (String(criancaId) !== String(crianca.id)) continue;
-      const resp = respPorId[responsavelId];
-      if (!resp) continue;
-
+  livres.forEach(function (m) {
+    const pessoa = pessoas[m.pessoaId];
+    vinculos.filter(function (v) { return v.pessoaId === m.pessoaId; }).forEach(function (v) {
+      const resp = responsaveis[v.responsavelId];
+      if (!resp) return;
       const telefone = formatarTelefoneWhatsApp_(resp.celular);
-      const item = {
-        criancaNome: crianca.nome,
-        responsavelNome: resp.nome,
-        semCelular: !telefone
-      };
+      const item = { pessoaNome: pessoa.nome, responsavelNome: resp.nome, semCelular: !telefone };
       if (telefone) {
         const mensagem = montarMensagemChamada_({
-          responsavel: resp.nome, funcao: funcao, diaSemana: missa.diaSemana,
-          data: missa.data, horario: missa.horario, descricao: missa.descricao,
-          crianca: crianca.nome
+          responsavel: resp.nome, funcao: funcao.nome, pastoral: ctx.pastoral.nome,
+          diaSemana: missa.diaSemana, data: missa.data, horario: missa.horario, descricao: missa.descricao,
+          pessoa: pessoa.tipo === 'adulto' && pessoa.nome === resp.nome ? 'Você' : pessoa.nome
         });
         item.link = 'https://api.whatsapp.com/send/?phone=' + telefone +
           '&text=' + encodeURIComponent(mensagem) + '&type=phone_number&app_absent=0';
       }
       resultado.push(item);
-    }
+    });
   });
   return resultado;
 }
 
-/** Cria missas recorrentes semanais a partir de hoje. */
-function gerarMissasRecorrentes(sessao, config) {
-  exigirCoordenador_(sessao);
-  config = config || {};
+/* ---------------------------------------------------------------------- */
+/* Administração: missas e pastorais (perfil administrador)               */
+/* ---------------------------------------------------------------------- */
 
-  const diaIndex = DIAS_SEMANA.indexOf(config.diaSemana);
-  if (diaIndex === -1) return { sucesso: false, mensagem: 'Dia da semana inválido.' };
-  const horario = String(config.horario || '');
-  if (!REGEX_HORARIO.test(horario)) return { sucesso: false, mensagem: 'Horário inválido.' };
+/** Pastorais, funções e coordenadores, as missas futuras e as pessoas que podem coordenar. Sem dados de crianças. */
+function obterAdministracao(sessao) {
+  exigirAdministrador_(sessao);
+  const pastorais = lerPastorais_();
+  const funcoes = lerFuncoes_();
+  const responsaveis = lerResponsaveis_();
 
-  const minC = numeroLimitado_(config.minCoroinha, 50);
-  const maxC = numeroLimitado_(config.maxCoroinha, 50);
-  const minCe = numeroLimitado_(config.minCerimoniario, 50);
-  const maxCe = numeroLimitado_(config.maxCerimoniario, 50);
-  if (minC > maxC || minCe > maxCe) return { sucesso: false, mensagem: 'O mínimo não pode ser maior que o máximo.' };
+  const mapa = lerVagasMapa_();
+  const funcoesAtivasLista = funcoesAtivas_(pastorais, funcoes);
 
-  const descricao = limparTexto_(config.descricao, 100);
-  const semanas = Math.min(52, Math.max(1, Math.floor(Number(config.semanas)) || 1));
+  return {
+    pastorais: pastorais.map(function (p) {
+      const coord = responsaveis[p.coordenadorId];
+      return {
+        id: p.id,
+        nome: p.nome,
+        ativa: p.ativa,
+        coordenadorId: p.coordenadorId,
+        coordenador: coord ? coord.nome : '',
+        funcoes: funcoes
+          .filter(function (f) { return f.pastoralId === p.id; })
+          .map(function (f) { return { id: f.id, nome: f.nome, minimo: f.minimo, maximo: f.maximo }; })
+      };
+    }),
+    usuarios: Object.keys(responsaveis)
+      .map(function (id) { return { id: id, nome: responsaveis[id].nome }; })
+      .sort(function (a, b) { return String(a.nome).localeCompare(String(b.nome)); }),
+    missas: lerEventos_(false).map(function (e) {
+      const vagas = funcoesAtivasLista.map(function (f) { return vagaDe_(mapa, e.id, f); });
+      return {
+        id: e.id, data: e.data, diaSemana: e.diaSemana, horario: e.horario, descricao: e.descricao,
+        // só contagens: o administrador não vê nomes
+        pastorais: pastorais.filter(function (p) { return p.ativa; }).map(function (p) {
+          const doP = vagas.filter(function (v) { return v.pastoralId === p.id; });
+          return {
+            pastoralId: p.id, pastoral: p.nome,
+            escalados: doP.reduce(function (s, v) { return s + v.escalados.length; }, 0),
+            maximo: doP.reduce(function (s, v) { return s + v.maximo; }, 0)
+          };
+        })
+      };
+    })
+  };
+}
+
+function limparFuncoesEntrada_(funcoesEntrada) {
+  const lista = Array.isArray(funcoesEntrada) ? funcoesEntrada.slice(0, 12) : [];
+  const saida = [];
+  for (let i = 0; i < lista.length; i++) {
+    const f = lista[i] || {};
+    const nome = limparTexto_(f.nome, 60);
+    if (!nome) continue;
+    const minimo = numeroLimitado_(f.minimo, 50);
+    const maximo = numeroLimitado_(f.maximo, 50);
+    if (minimo > maximo) return { erro: 'Em ' + nome + ', o mínimo não pode ser maior que o máximo.' };
+    saida.push({ id: f.id ? String(f.id) : '', nome: nome, minimo: minimo, maximo: maximo });
+  }
+  return { funcoes: saida };
+}
+
+/** dados: { nome, coordenadorId, funcoes: [{ nome, minimo, maximo }] } */
+function criarPastoral(sessao, dados) {
+  exigirAdministrador_(sessao);
+  dados = dados || {};
+  const nome = limparTexto_(dados.nome, 60);
+  if (!nome) return { sucesso: false, mensagem: 'Informe o nome da pastoral.' };
+  const coordenadorId = String(dados.coordenadorId === null || dados.coordenadorId === undefined ? '' : dados.coordenadorId);
+  if (!lerResponsaveis_()[coordenadorId]) return { sucesso: false, mensagem: 'Escolha o coordenador da pastoral.' };
+  const f = limparFuncoesEntrada_(dados.funcoes);
+  if (f.erro) return { sucesso: false, mensagem: f.erro };
+  if (f.funcoes.length === 0) return { sucesso: false, mensagem: 'Informe ao menos uma função (ex.: Leitor).' };
 
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_MISSAS);
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const existe = lerPastorais_().some(function (p) { return removerAcentos_(p.nome).toLowerCase() === removerAcentos_(nome).toLowerCase(); });
+    if (existe) return { sucesso: false, mensagem: 'Já existe uma pastoral com esse nome.' };
 
-    let proxima = new Date(hoje);
-    while (proxima.getDay() !== diaIndex) {
-      proxima.setDate(proxima.getDate() + 1);
-    }
-
-    let criadas = 0;
-    for (let i = 0; i < semanas; i++) {
-      const data = new Date(proxima);
-      data.setDate(data.getDate() + i * 7);
-      sheet.appendRow([data, horario, descricao, minC, maxC, '', minCe, maxCe, '']);
-      criadas++;
-    }
-    return { sucesso: true, criadas: criadas };
+    const pastoraisSheet = ss.getSheetByName(ABA_PASTORAIS);
+    const funcoesSheet = ss.getSheetByName(ABA_FUNCOES);
+    const id = proximoId_(pastoraisSheet, 'P');
+    pastoraisSheet.appendRow([id, nome, coordenadorId, true]);
+    f.funcoes.forEach(function (fn) {
+      funcoesSheet.appendRow([proximoId_(funcoesSheet, 'F'), id, fn.nome, fn.minimo, fn.maximo]);
+    });
+    return { sucesso: true, id: id };
   } finally {
     lock.releaseLock();
   }
 }
 
-function editarMissa(sessao, linha, dados) {
-  exigirCoordenador_(sessao);
-  linha = Number(linha);
+/**
+ * dados: { nome?, coordenadorId?, ativa?, funcoes?: [{ id?, nome, minimo, maximo }] }
+ * Função com `id` é atualizada; sem `id` é criada. Funções não são apagadas (as escalas dependem delas).
+ */
+function editarPastoral(sessao, pastoralId, dados) {
+  exigirAdministrador_(sessao);
   dados = dados || {};
+  pastoralId = String(pastoralId === null || pastoralId === undefined ? '' : pastoralId);
+
+  let nome = null;
+  if (dados.nome !== undefined) {
+    nome = limparTexto_(dados.nome, 60);
+    if (!nome) return { sucesso: false, mensagem: 'Informe o nome da pastoral.' };
+  }
+  let coordenadorId = null;
+  if (dados.coordenadorId !== undefined) {
+    coordenadorId = String(dados.coordenadorId);
+    if (!lerResponsaveis_()[coordenadorId]) return { sucesso: false, mensagem: 'Escolha o coordenador da pastoral.' };
+  }
+  let f = null;
+  if (dados.funcoes !== undefined) {
+    f = limparFuncoesEntrada_(dados.funcoes);
+    if (f.erro) return { sucesso: false, mensagem: f.erro };
+  }
 
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_MISSAS);
-    if (!linhaValida_(sheet, linha)) return { sucesso: false, mensagem: 'Missa não encontrada. Atualize a lista.' };
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const pastoral = lerPastorais_().filter(function (p) { return p.id === pastoralId; })[0];
+    if (!pastoral) return { sucesso: false, mensagem: 'Pastoral não encontrada. Atualize a lista.' };
 
-    if (dados.horario) {
-      if (!REGEX_HORARIO.test(String(dados.horario))) return { sucesso: false, mensagem: 'Horário inválido.' };
-      sheet.getRange(linha, 2).setValue(String(dados.horario));
+    const sheet = ss.getSheetByName(ABA_PASTORAIS);
+    if (nome !== null) {
+      const duplicado = lerPastorais_().some(function (p) {
+        return p.id !== pastoralId && removerAcentos_(p.nome).toLowerCase() === removerAcentos_(nome).toLowerCase();
+      });
+      if (duplicado) return { sucesso: false, mensagem: 'Já existe uma pastoral com esse nome.' };
+      sheet.getRange(pastoral.linha, 2).setValue(nome);
     }
-    if (dados.descricao !== undefined) sheet.getRange(linha, 3).setValue(limparTexto_(dados.descricao, 100));
-    if (dados.minCoroinha !== undefined) sheet.getRange(linha, 4).setValue(numeroLimitado_(dados.minCoroinha, 50));
-    if (dados.maxCoroinha !== undefined) sheet.getRange(linha, 5).setValue(numeroLimitado_(dados.maxCoroinha, 50));
-    if (dados.minCerimoniario !== undefined) sheet.getRange(linha, 7).setValue(numeroLimitado_(dados.minCerimoniario, 50));
-    if (dados.maxCerimoniario !== undefined) sheet.getRange(linha, 8).setValue(numeroLimitado_(dados.maxCerimoniario, 50));
+    if (coordenadorId !== null) sheet.getRange(pastoral.linha, 3).setValue(coordenadorId);
+    if (dados.ativa !== undefined) sheet.getRange(pastoral.linha, 4).setValue(dados.ativa === true);
+
+    if (f) {
+      const funcoesSheet = ss.getSheetByName(ABA_FUNCOES);
+      const existentes = lerFuncoes_().filter(function (x) { return x.pastoralId === pastoralId; });
+      f.funcoes.forEach(function (fn) {
+        const atual = fn.id ? existentes.filter(function (x) { return x.id === fn.id; })[0] : null;
+        if (atual) {
+          funcoesSheet.getRange(atual.linha, 3).setValue(fn.nome);
+          funcoesSheet.getRange(atual.linha, 4).setValue(fn.minimo);
+          funcoesSheet.getRange(atual.linha, 5).setValue(fn.maximo);
+        } else if (!fn.id) {
+          funcoesSheet.appendRow([proximoId_(funcoesSheet, 'F'), pastoralId, fn.nome, fn.minimo, fn.maximo]);
+        }
+      });
+    }
     return { sucesso: true };
   } finally {
     lock.releaseLock();
   }
 }
 
-/** dataEsperada ("dd/MM/yyyy") garante que a linha ainda é a missa que o coordenador viu. */
-function excluirMissa(sessao, linha, dataEsperada) {
-  exigirCoordenador_(sessao);
-  linha = Number(linha);
+function dataDeTexto_(texto) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(texto === null || texto === undefined ? '' : texto));
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (isNaN(d) || d.getMonth() !== Number(m[2]) - 1) return null;
+  return d;
+}
+
+function existeEventoNoHorario_(data, horario) {
+  const alvo = formatarData_(data);
+  return lerEventos_(true).some(function (e) { return e.data === alvo && e.horario === horario; });
+}
+
+/** dados: { data: "yyyy-MM-dd", horario: "HH:mm", descricao } */
+function criarMissa(sessao, dados) {
+  exigirAdministrador_(sessao);
+  dados = dados || {};
+  const data = dataDeTexto_(dados.data);
+  if (!data) return { sucesso: false, mensagem: 'Data inválida.' };
+  const horario = String(dados.horario || '');
+  if (!REGEX_HORARIO.test(horario)) return { sucesso: false, mensagem: 'Horário inválido.' };
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  if (data < hoje) return { sucesso: false, mensagem: 'Essa data já passou.' };
+  const descricao = limparTexto_(dados.descricao, 100);
 
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_MISSAS);
-    if (!linhaValida_(sheet, linha)) return { sucesso: false, mensagem: 'Missa não encontrada. Atualize a lista.' };
+    if (existeEventoNoHorario_(data, horario)) {
+      return { sucesso: false, mensagem: 'Já existe uma missa nessa data e horário.' };
+    }
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_EVENTOS);
+    const id = proximoId_(sheet, 'E');
+    sheet.appendRow([id, data, horario, descricao]);
+    return { sucesso: true, id: id };
+  } finally {
+    lock.releaseLock();
+  }
+}
 
-    const dataLinha = new Date(sheet.getRange(linha, 1).getValue());
-    const dataTxt = isNaN(dataLinha) ? '' : Utilities.formatDate(dataLinha, Session.getScriptTimeZone(), 'dd/MM/yyyy');
-    if (dataEsperada && dataTxt !== String(dataEsperada)) {
+/** Cria missas semanais a partir de hoje. As que já existem (mesma data e horário) são puladas. */
+function gerarMissasRecorrentes(sessao, config) {
+  exigirAdministrador_(sessao);
+  config = config || {};
+
+  const diaIndex = DIAS_SEMANA.indexOf(config.diaSemana);
+  if (diaIndex === -1) return { sucesso: false, mensagem: 'Dia da semana inválido.' };
+  const horario = String(config.horario || '');
+  if (!REGEX_HORARIO.test(horario)) return { sucesso: false, mensagem: 'Horário inválido.' };
+  const descricao = limparTexto_(config.descricao, 100);
+  const semanas = Math.min(52, Math.max(1, Math.floor(Number(config.semanas)) || 1));
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_EVENTOS);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const proxima = new Date(hoje);
+    while (proxima.getDay() !== diaIndex) proxima.setDate(proxima.getDate() + 1);
+
+    let criadas = 0, ignoradas = 0;
+    for (let i = 0; i < semanas; i++) {
+      const data = new Date(proxima);
+      data.setDate(data.getDate() + i * 7);
+      if (existeEventoNoHorario_(data, horario)) { ignoradas++; continue; }
+      sheet.appendRow([proximoId_(sheet, 'E'), data, horario, descricao]);
+      criadas++;
+    }
+    return { sucesso: true, criadas: criadas, ignoradas: ignoradas };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** dados: { horario?, descricao? }. As vagas são ajustadas pelo coordenador de cada pastoral. */
+function editarMissa(sessao, eventoId, dados) {
+  exigirAdministrador_(sessao);
+  dados = dados || {};
+  eventoId = String(eventoId === null || eventoId === undefined ? '' : eventoId);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const evento = lerEventos_(true).filter(function (e) { return e.id === eventoId; })[0];
+    if (!evento) return { sucesso: false, mensagem: 'Missa não encontrada. Atualize a lista.' };
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABA_EVENTOS);
+    if (dados.horario !== undefined) {
+      if (!REGEX_HORARIO.test(String(dados.horario))) return { sucesso: false, mensagem: 'Horário inválido.' };
+      sheet.getRange(evento.linha, 3).setValue(String(dados.horario));
+    }
+    if (dados.descricao !== undefined) sheet.getRange(evento.linha, 4).setValue(limparTexto_(dados.descricao, 100));
+    return { sucesso: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** dataEsperada ("dd/MM/yyyy") garante que o id ainda é a missa que o administrador viu. */
+function excluirMissa(sessao, eventoId, dataEsperada) {
+  exigirAdministrador_(sessao);
+  eventoId = String(eventoId === null || eventoId === undefined ? '' : eventoId);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const evento = lerEventos_(true).filter(function (e) { return e.id === eventoId; })[0];
+    if (!evento) return { sucesso: false, mensagem: 'Missa não encontrada. Atualize a lista.' };
+    if (dataEsperada && evento.data !== String(dataEsperada)) {
       return { sucesso: false, mensagem: 'A lista mudou desde que você abriu. Atualize e tente de novo.' };
     }
 
-    sheet.deleteRow(linha);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    // apaga de baixo para cima para não deslocar as linhas ainda não visitadas
+    const vagas = ss.getSheetByName(ABA_VAGAS);
+    const dados = vagas.getDataRange().getValues();
+    for (let i = dados.length - 1; i >= 1; i--) {
+      if (String(dados[i][0]) === eventoId) vagas.deleteRow(i + 1);
+    }
+    ss.getSheetByName(ABA_EVENTOS).deleteRow(evento.linha);
     return { sucesso: true };
   } finally {
     lock.releaseLock();
@@ -1081,111 +1732,165 @@ function enviarLembretes() {
   const hoje = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   if (props.getProperty('ULTIMO_LEMBRETE') === hoje) return { sucesso: true, avisados: 0, repetido: true };
   props.setProperty('ULTIMO_LEMBRETE', hoje);
-  return enviarLembretes_();
+  return enviarLembretes_(null);
 }
 
-/** Botão "Enviar lembretes agora" do painel (só coordenador). */
-function enviarLembretesCoordenador(sessao) {
-  exigirCoordenador_(sessao);
-  return enviarLembretes_();
+/** Botão "Enviar lembretes agora" do painel: só as escalas da pastoral do coordenador. */
+function enviarLembretesCoordenador(sessao, pastoralId) {
+  const ctx = exigirCoordenadorDe_(sessao, pastoralId);
+  return enviarLembretes_(ctx.pastoral.id);
 }
 
-/** Envia lembretes das missas de daqui a 3 dias. */
-function enviarLembretes_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const missas = ss.getSheetByName(ABA_MISSAS).getDataRange().getValues();
-  const criancas = mapaCriancas_();
-  const vinculos = ss.getSheetByName(ABA_VINCULOS).getDataRange().getValues();
-  const responsaveis = ss.getSheetByName(ABA_RESPONSAVEIS).getDataRange().getValues();
-
-  const responsavelPorId = {};
-  const coordenadores = [];
-  for (let i = 1; i < responsaveis.length; i++) {
-    const [id, nome, usuario, senha, email, celular, coordenador] = responsaveis[i];
-    responsavelPorId[id] = { nome, email };
-    if (ehVerdadeiro_(coordenador)) {
-      coordenadores.push({ nome, email });
-    }
-  }
-
-  const responsaveisPorCrianca = {};
-  for (let i = 1; i < vinculos.length; i++) {
-    const [responsavelId, criancaId] = vinculos[i];
-    if (!responsaveisPorCrianca[criancaId]) responsaveisPorCrianca[criancaId] = [];
-    responsaveisPorCrianca[criancaId].push(responsavelId);
-  }
+/** Envia lembretes das missas de daqui a 3 dias. `pastoralId` null = todas as pastorais. */
+function enviarLembretes_(pastoralId) {
+  const pastorais = lerPastorais_().filter(function (p) { return p.ativa && (!pastoralId || p.id === pastoralId); });
+  const idsPastorais = pastorais.map(function (p) { return p.id; });
+  const pessoas = lerPessoas_();
+  const responsaveis = lerResponsaveis_();
+  const vinculos = lerVinculos_();
 
   const alvo = new Date();
   alvo.setDate(alvo.getDate() + 3);
-  alvo.setHours(0, 0, 0, 0);
   const alvoStr = Utilities.formatDate(alvo, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 
-  const partir = v => v ? String(v).split(',').map(s => s.trim()).filter(Boolean) : [];
+  const eventos = eventosComVagas_(idsPastorais, true).filter(function (e) {
+    return Utilities.formatDate(new Date(e.dataOrdenacao), Session.getScriptTimeZone(), 'yyyy-MM-dd') === alvoStr;
+  });
 
-  const porResponsavel = {}; // responsavelId -> [{criancaNome, funcao, data, horario}]
-  const escalaCompleta = []; // para o e-mail do coordenador
+  const porResponsavel = {};      // responsavelId -> linhas
+  const escalaPorPastoral = {};   // pastoralId -> blocos de texto
 
-  for (let i = 1; i < missas.length; i++) {
-    const [data, horario, descricao, minC, maxC, coroinhas, minCe, maxCe, cerimoniarios] = missas[i];
-    if (!data) continue;
-    const dataObj = new Date(data);
-    const dataStr = Utilities.formatDate(dataObj, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    if (dataStr !== alvoStr) continue;
-
-    const dataFormatada = Utilities.formatDate(dataObj, Session.getScriptTimeZone(), 'dd/MM/yyyy');
-    const idsCoroinha = partir(coroinhas);
-    const idsCerim = partir(cerimoniarios);
-
-    const linhaEscala = { data: dataFormatada, horario, descricao,
-      coroinhas: idsCoroinha.map(id => (criancas[id] ? criancas[id].nome : '(?)')),
-      cerimoniarios: idsCerim.map(id => (criancas[id] ? criancas[id].nome : '(?)')) };
-    escalaCompleta.push(linhaEscala);
-
-    function processar(ids, funcao) {
-      ids.forEach(function (criancaId) {
-        const nomeCrianca = criancas[criancaId] ? criancas[criancaId].nome : '(?)';
-        (responsaveisPorCrianca[criancaId] || []).forEach(function (respId) {
-          if (!porResponsavel[respId]) porResponsavel[respId] = [];
-          porResponsavel[respId].push({ criancaNome: nomeCrianca, funcao: funcao, data: dataFormatada, horario: horario });
+  eventos.forEach(function (e) {
+    const porPastoral = {};
+    e.vagas.forEach(function (v) {
+      if (v.escalados.length === 0) return;
+      (porPastoral[v.pastoralId] = porPastoral[v.pastoralId] || []).push(
+        '  ' + v.funcao + ': ' + nomesPorId_(v.escalados, pessoas).join(', '));
+      v.escalados.forEach(function (pessoaId) {
+        const nome = pessoas[pessoaId] ? pessoas[pessoaId].nome : '(?)';
+        vinculos.filter(function (x) { return x.pessoaId === pessoaId; }).forEach(function (x) {
+          (porResponsavel[x.responsavelId] = porResponsavel[x.responsavelId] || []).push(
+            '- ' + nome + ' (' + v.funcao + ', ' + v.pastoral + '), ' + e.data + ' às ' + e.horario);
         });
       });
-    }
-    processar(idsCoroinha, 'Coroinha');
-    processar(idsCerim, 'Cerimoniário');
-  }
-
-  Object.keys(porResponsavel).forEach(function (respId) {
-    const resp = responsavelPorId[respId];
-    if (!resp || !resp.email) return;
-    const itens = porResponsavel[respId];
-    const corpo = itens.map(it => '- ' + it.criancaNome + ' (' + it.funcao + '), ' + it.data + ' às ' + it.horario).join('\n');
-    MailApp.sendEmail({
-      to: resp.email,
-      subject: 'Lembrete: escala em 3 dias — ' + PARÓQUIA.nome,
-      body: 'Olá, ' + resp.nome + '!\n\nLembrando que:\n\n' + corpo +
-        '\n\n' + PARÓQUIA.nome + '\n' + PARÓQUIA.endereco + '\n' + PARÓQUIA.telefone
+    });
+    Object.keys(porPastoral).forEach(function (pid) {
+      (escalaPorPastoral[pid] = escalaPorPastoral[pid] || []).push(
+        e.data + ' às ' + e.horario + (e.descricao ? ' - ' + e.descricao : '') + '\n' + porPastoral[pid].join('\n'));
     });
   });
 
-  if (escalaCompleta.length > 0) {
-    const corpoCompleto = escalaCompleta.map(function (m) {
-      return m.data + ' às ' + m.horario + (m.descricao ? ' - ' + m.descricao : '') +
-        '\n  Coroinhas: ' + (m.coroinhas.join(', ') || '(nenhum)') +
-        '\n  Cerimoniários: ' + (m.cerimoniarios.join(', ') || '(nenhum)');
-    }).join('\n\n');
-
-    coordenadores.forEach(function (c) {
-      if (!c.email) return;
-      MailApp.sendEmail({
-        to: c.email,
-        subject: 'Escala completa — daqui a 3 dias — ' + PARÓQUIA.nome,
-        body: 'Olá, ' + c.nome + '!\n\nEscala completa das missas de daqui a 3 dias:\n\n' + corpoCompleto +
-          '\n\n' + PARÓQUIA.nome
-      });
+  let avisados = 0;
+  Object.keys(porResponsavel).forEach(function (respId) {
+    const resp = responsaveis[respId];
+    if (!resp || !REGEX_EMAIL.test(resp.email)) return;
+    MailApp.sendEmail({
+      to: resp.email,
+      subject: 'Lembrete: escala em 3 dias — ' + PARÓQUIA.nome,
+      body: 'Olá, ' + resp.nome + '!\n\nLembrando que:\n\n' + porResponsavel[respId].join('\n') +
+        '\n\n' + PARÓQUIA.nome + '\n' + PARÓQUIA.endereco + '\n' + PARÓQUIA.telefone
     });
-  }
+    avisados++;
+  });
 
-  return { sucesso: true, avisados: Object.keys(porResponsavel).length };
+  pastorais.forEach(function (p) {
+    const blocos = escalaPorPastoral[p.id];
+    const coord = responsaveis[p.coordenadorId];
+    if (!blocos || !coord || !REGEX_EMAIL.test(coord.email)) return;
+    MailApp.sendEmail({
+      to: coord.email,
+      subject: 'Escala completa de ' + p.nome + ', daqui a 3 dias — ' + PARÓQUIA.nome,
+      body: 'Olá, ' + coord.nome + '!\n\nEscala de ' + p.nome + ' nas missas de daqui a 3 dias:\n\n' +
+        blocos.join('\n\n') + '\n\n' + PARÓQUIA.nome
+    });
+  });
+
+  return { sucesso: true, avisados: avisados };
+}
+
+/* ---------------------------------------------------------------------- */
+/* Migração para o modelo multi-pastoral (só com PERMITIR_ADMIN = sim)     */
+/* ---------------------------------------------------------------------- */
+
+function abaOuNova_(ss, nome, cabecalho) {
+  const sheet = ss.getSheetByName(nome) || ss.insertSheet(nome);
+  if (sheet.getLastRow() === 0) sheet.appendRow(cabecalho);
+  return sheet;
+}
+
+/**
+ * Cria as abas do modelo multi-pastoral e copia o que existe hoje. Idempotente: pode rodar de novo.
+ * As abas antigas (Missas e a coluna Funcao de Criancas) não são alteradas.
+ */
+function migrarParaMultiPastoral() {
+  exigirAdmin_();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    const resp = abaOuNova_(ss, ABA_RESPONSAVEIS, ['ID', 'Nome', 'Usuario', 'Senha', 'Email', 'Celular', 'Coordenador', 'Administrador']);
+    const respDados = resp.getDataRange().getValues();
+    if (String(respDados[0][7] || '') === '') resp.getRange(1, 8).setValue('Administrador');
+    const criancas = abaOuNova_(ss, ABA_CRIANCAS, ['ID', 'Nome', 'Funcao', 'Tipo']);
+    if (String(criancas.getDataRange().getValues()[0][3] || '') === '') criancas.getRange(1, 4).setValue('Tipo');
+    abaOuNova_(ss, ABA_VINCULOS, ['ResponsavelID', 'CriancaID']);
+    abaOuNova_(ss, ABA_RESET, ['Token', 'ResponsavelID', 'ExpiraEm', 'Usado']);
+
+    const pastoraisSheet = abaOuNova_(ss, ABA_PASTORAIS, ['ID', 'Nome', 'CoordenadorID', 'Ativa']);
+    const funcoesSheet = abaOuNova_(ss, ABA_FUNCOES, ['ID', 'PastoralID', 'Nome', 'MinPadrao', 'MaxPadrao']);
+    const membrosSheet = abaOuNova_(ss, ABA_MEMBROS, ['PessoaID', 'PastoralID', 'FuncaoID', 'Situacao']);
+    const eventosSheet = abaOuNova_(ss, ABA_EVENTOS, ['ID', 'Data', 'Horario', 'Descricao']);
+    const vagasSheet = abaOuNova_(ss, ABA_VAGAS, ['EventoID', 'FuncaoID', 'Minimo', 'Maximo', 'Escalados']);
+
+    // quem era coordenador vira administrador; o primeiro coordena a pastoral migrada
+    const coordenadoresAntigos = [];
+    for (let i = 1; i < respDados.length; i++) {
+      if (!respDados[i][0]) continue;
+      if (ehVerdadeiro_(respDados[i][6])) {
+        coordenadoresAntigos.push(String(respDados[i][0]));
+        if (!ehVerdadeiro_(respDados[i][7])) resp.getRange(i + 1, 8).setValue(true);
+      }
+    }
+
+    if (lerPastorais_().length > 0) return { sucesso: true, jaMigrado: true };
+
+    // pastoral e funções
+    const missasAntigas = ss.getSheetByName(ABA_MISSAS) ? ss.getSheetByName(ABA_MISSAS).getDataRange().getValues() : [];
+    const base = missasAntigas.length > 1 ? missasAntigas[1] : [];
+    const minC = Number(base[3]) || 3, maxC = Number(base[4]) || 6;
+    const minCe = Number(base[6]) || 2, maxCe = Number(base[7]) || 4;
+
+    pastoraisSheet.appendRow(['P001', 'Coroinhas e Cerimoniários', coordenadoresAntigos[0] || '', true]);
+    funcoesSheet.appendRow(['F001', 'P001', 'Coroinha', minC, maxC]);
+    funcoesSheet.appendRow(['F002', 'P001', 'Cerimoniário', minCe, maxCe]);
+    const funcaoPorNome = { 'coroinha': 'F001', 'cerimoniario': 'F002' };
+    const norm = function (s) { return removerAcentos_(String(s || '')).trim().toLowerCase(); };
+
+    // membros: a função que a criança tinha vira participação ativa
+    const criancasDados = criancas.getDataRange().getValues();
+    for (let i = 1; i < criancasDados.length; i++) {
+      const id = criancasDados[i][0];
+      const fid = funcaoPorNome[norm(criancasDados[i][2])];
+      if (!id || !fid) continue;
+      membrosSheet.appendRow([String(id), 'P001', fid, 'ativo']);
+      if (String(criancasDados[i][3] || '') === '') criancas.getRange(i + 1, 4).setValue('crianca');
+    }
+
+    // eventos e escalas
+    for (let i = 1; i < missasAntigas.length; i++) {
+      const m = missasAntigas[i];
+      if (!m[0]) continue;
+      const eid = proximoId_(eventosSheet, 'E');
+      eventosSheet.appendRow([eid, m[0], m[1], m[2]]);
+      vagasSheet.appendRow([eid, 'F001', Number(m[3]) || 0, Number(m[4]) || 0, String(m[5] || '')]);
+      vagasSheet.appendRow([eid, 'F002', Number(m[6]) || 0, Number(m[7]) || 0, String(m[8] || '')]);
+    }
+
+    return { sucesso: true, jaMigrado: false, coordenadores: coordenadoresAntigos.length };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1194,154 +1899,7 @@ function enviarLembretes_() {
 
 function testeMissas() {
   exigirAdmin_();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(ABA_MISSAS);
-  Logger.log('Aba encontrada: %s', sheet ? sheet.getName() : 'NULL - nome não bate!');
-  if (!sheet) return;
-  const dados = sheet.getDataRange().getValues();
-  Logger.log('Linhas: %s', dados.length);
-  Logger.log(JSON.stringify(dados));
-  try {
-    Logger.log(JSON.stringify(lerMissasBrutas_()));
-  } catch (e) {
-    Logger.log('ERRO em lerMissasBrutas_: ' + e.message);
-  }
-}
-
-/** Gera dados de teste para Vinculos e Missas a partir do que já existe em Responsaveis e Criancas.
- *  DESTRUTIVO: limpa Vinculos e Missas. Roda uma vez pelo editor do Apps Script. */
-function gerarDadosTeste() {
-  exigirAdmin_();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const respSheet = ss.getSheetByName(ABA_RESPONSAVEIS);
-  const criancaSheet = ss.getSheetByName(ABA_CRIANCAS);
-  const vincSheet = ss.getSheetByName(ABA_VINCULOS);
-  const missaSheet = ss.getSheetByName(ABA_MISSAS);
-
-  const respDados = respSheet.getDataRange().getValues();
-  const criancaDados = criancaSheet.getDataRange().getValues();
-
-  const responsaveisIds = [];
-  for (let i = 1; i < respDados.length; i++) {
-    if (respDados[i][0]) responsaveisIds.push(respDados[i][0]);
-  }
-
-  const coroinhas = [];
-  const cerimoniarios = [];
-  for (let i = 1; i < criancaDados.length; i++) {
-    const [id, nome, funcao] = criancaDados[i];
-    if (!id) continue;
-    if (funcao === 'Coroinha') coroinhas.push(id);
-    else if (funcao === 'Cerimoniário') cerimoniarios.push(id);
-  }
-
-  if (responsaveisIds.length === 0 || (coroinhas.length + cerimoniarios.length) === 0) {
-    Logger.log('Cadastre Responsaveis e Criancas antes de rodar esse gerador.');
-    return;
-  }
-
-  /* ---------- Limpa dados antigos (mantém cabeçalho) ---------- */
-  if (vincSheet.getLastRow() > 1) vincSheet.getRange(2, 1, vincSheet.getLastRow() - 1, 2).clearContent();
-  if (missaSheet.getLastRow() > 1) missaSheet.getRange(2, 1, missaSheet.getLastRow() - 1, 9).clearContent();
-
-  /* ---------- Gera Vínculos ---------- */
-  const todasCriancas = coroinhas.concat(cerimoniarios);
-  const novosVinculos = [];
-  let idxResp = 0;
-
-  todasCriancas.forEach(function (criancaId, i) {
-    const respId = responsaveisIds[idxResp % responsaveisIds.length];
-    novosVinculos.push([respId, criancaId]);
-
-    // a cada 5 crianças, dá 2 filhos pro mesmo responsável (simula irmãos)
-    if (i % 5 === 4 && i + 1 < todasCriancas.length) {
-      // não avança o índice, próxima criança pega o mesmo responsável no próximo loop
-    } else {
-      idxResp++;
-    }
-  });
-
-  // caso especial: primeira criança tem 2 responsáveis (pais separados)
-  if (todasCriancas.length > 0 && responsaveisIds.length > 1) {
-    novosVinculos.push([responsaveisIds[responsaveisIds.length - 1], todasCriancas[0]]);
-  }
-
-  if (novosVinculos.length > 0) {
-    vincSheet.getRange(2, 1, novosVinculos.length, 2).setValues(novosVinculos);
-  }
-
-  /* ---------- Gera Missas ---------- */
-  const novasMissas = [];
-
-  function proximoDomingo(diasAFrente) {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + diasAFrente);
-    while (d.getDay() !== 0) d.setDate(d.getDate() + 1);
-    return d;
-  }
-
-  function horaComo(dataBase, hh, mm) {
-    const d = new Date(dataBase);
-    d.setHours(hh, mm, 0, 0);
-    return d;
-  }
-
-  function idsAleatorios(lista, qtd) {
-    const copia = lista.slice();
-    const escolhidos = [];
-    for (let i = 0; i < qtd && copia.length > 0; i++) {
-      const idx = Math.floor(Math.random() * copia.length);
-      escolhidos.push(copia.splice(idx, 1)[0]);
-    }
-    return escolhidos;
-  }
-
-  // Cenário 1: missa daqui a 2 dias, quase vazia (dispara alerta de WhatsApp)
-  const dataUrgente = new Date(); dataUrgente.setDate(dataUrgente.getDate() + 2); dataUrgente.setHours(0, 0, 0, 0);
-  novasMissas.push([
-    horaComo(dataUrgente, 19, 0), horaComo(dataUrgente, 19, 0), 'Missa Dominical (teste: urgente)',
-    3, 6, idsAleatorios(coroinhas, 1).join(', '),
-    2, 4, idsAleatorios(cerimoniarios, 1).join(', ')
-  ]);
-
-  // Cenário 2: próximo domingo, abaixo do mínimo (mas não urgente)
-  const dom1 = proximoDomingo(3);
-  novasMissas.push([
-    dom1, horaComo(dom1, 10, 0), 'Missa Dominical (teste: abaixo do mínimo)',
-    4, 8, idsAleatorios(coroinhas, 1).join(', '),
-    3, 5, idsAleatorios(cerimoniarios, 1).join(', ')
-  ]);
-
-  // Cenário 3: missa cheia (limite atingido)
-  novasMissas.push([
-    dom1, horaComo(dom1, 19, 0), 'Missa Dominical (teste: cheia)',
-    2, 3, idsAleatorios(coroinhas, Math.min(3, coroinhas.length)).join(', '),
-    1, 2, idsAleatorios(cerimoniarios, Math.min(2, cerimoniarios.length)).join(', ')
-  ]);
-
-  // Cenário 4: missa totalmente vazia
-  const dom2 = proximoDomingo(10);
-  novasMissas.push([
-    dom2, horaComo(dom2, 10, 0), 'Missa Dominical (teste: vazia)',
-    3, 6, '',
-    2, 4, ''
-  ]);
-
-  // Cenário 5-8: missas normais nas próximas semanas, com ocupação parcial variada
-  for (let semana = 2; semana <= 5; semana++) {
-    const dom = proximoDomingo(semana * 7);
-    novasMissas.push([
-      dom, horaComo(dom, 19, 0), 'Missa Dominical',
-      3, 6, idsAleatorios(coroinhas, Math.min(2, coroinhas.length)).join(', '),
-      2, 4, idsAleatorios(cerimoniarios, Math.min(2, cerimoniarios.length)).join(', ')
-    ]);
-  }
-
-  if (novasMissas.length > 0) {
-    missaSheet.getRange(2, 1, novasMissas.length, 9).setValues(novasMissas);
-  }
-
-  Logger.log('Gerados: %s vínculos, %s missas.', novosVinculos.length, novasMissas.length);
-  Logger.log('Cenários criados: 1 missa urgente/vazia (WhatsApp), 1 abaixo do mínimo, 1 cheia, 1 totalmente vazia, 4 normais.');
+  Logger.log('Pastorais: ' + JSON.stringify(lerPastorais_()));
+  Logger.log('Funções: ' + JSON.stringify(lerFuncoes_()));
+  Logger.log('Eventos futuros: ' + JSON.stringify(lerEventos_(false)));
 }
