@@ -43,7 +43,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "node --test tests/apps-script/security.test.js tests/apps-script/multipastoral.test.js src/utils/calendario.test.ts src/utils/eventos.test.ts src/utils/format-date.test.ts src/utils/validacao.test.ts src/utils/rotulos.test.ts src/services/adapters.test.ts",
+    "test": "node --test tests/apps-script/security.test.js tests/apps-script/multipastoral.test.js tests/apps-script/nascimento.test.js src/utils/calendario.test.ts src/utils/eventos.test.ts src/utils/format-date.test.ts src/utils/validacao.test.ts src/utils/rotulos.test.ts src/services/adapters.test.ts",
     "mock-api": "node tests/apps-script/mock-server.js",
     "contraste": "node scripts/contraste.mjs"
   },

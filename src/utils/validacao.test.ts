@@ -7,6 +7,8 @@ import {
   emailValido,
   horarioValido,
   inteiroLimitado,
+  mascaraData,
+  nascimentoParaIso,
   normalizarHorario,
   somenteDigitos,
   tokenRedefinicaoValido,
@@ -77,4 +79,26 @@ test('dataBrParaIso aceita dd/mm/aaaa e recusa datas que não existem', () => {
   assert.equal(dataBrParaIso('2026-12-25'), null);
   assert.equal(dataBrParaIso('abc'), null);
   assert.equal(dataBrParaIso(''), null);
+});
+
+test('mascaraData coloca as barras enquanto digita', () => {
+  assert.equal(mascaraData('1'), '1');
+  assert.equal(mascaraData('150'), '15/0');
+  assert.equal(mascaraData('15031985'), '15/03/1985');
+  assert.equal(mascaraData('15/03/1985999'), '15/03/1985');
+  assert.equal(mascaraData('ab'), '');
+});
+
+test('nascimentoParaIso valida data, futuro, idade mínima e ano de 4 dígitos', () => {
+  const hoje = new Date(2026, 9, 26); // 26/10/2026
+  assert.deepEqual(nascimentoParaIso('15/03/1985', 18, hoje), { iso: '1985-03-15' });
+  assert.deepEqual(nascimentoParaIso('5/1/2016', 0, hoje), { iso: '2016-01-05' });
+  assert.ok('erro' in nascimentoParaIso('', 0, hoje));
+  assert.ok('erro' in nascimentoParaIso('15/03/85', 0, hoje), 'ano de 2 dígitos é ambíguo');
+  assert.ok('erro' in nascimentoParaIso('31/02/2010', 0, hoje), 'data que não existe');
+  assert.ok('erro' in nascimentoParaIso('27/10/2026', 0, hoje), 'futuro');
+  assert.ok('erro' in nascimentoParaIso('01/01/1900', 0, hoje), 'mais de 110 anos');
+  // 18 anos completos só no dia do aniversário
+  assert.ok('erro' in nascimentoParaIso('27/10/2008', 18, hoje));
+  assert.deepEqual(nascimentoParaIso('26/10/2008', 18, hoje), { iso: '2008-10-26' });
 });

@@ -65,14 +65,19 @@ Os e-mails "enviados" aparecem em http://localhost:4000/emails.
 
 | # | Teste | Resultado esperado | ✔ |
 |---|---|---|---|
-| 2.1 | Login → **Criar cadastro** → enviar vazio | Pede nome e sobrenome e e-mail | ☐ |
+| 2.1 | Login → **Criar cadastro** → enviar vazio | Pede nome e sobrenome, e-mail, data de nascimento e ao menos uma pastoral | ☐ |
 | 2.2 | Senha com menos de 6 caracteres | Recusa com mensagem | ☐ |
-| 2.3 | Enviar sem ninguém para servir | "Informe quem vai servir: você, um filho(a) ou os dois." | ☐ |
-| 2.4 | "Sim, eu sirvo" + pastoral e função, e um filho com outra pastoral/função | A lista de filhos mostra "Função · Pastoral" | ☐ |
-| 2.5 | Concluir | Mostra **"Seu usuário"** e o aviso de que o coordenador vai aprovar | ☐ |
-| 2.6 | **Entrar no app** | Abre a Agenda, já logado | ☐ |
-| 2.7 | E-mails | Usuário e link do app novo para a pessoa; aviso de pedido para cada coordenador envolvido | ☐ |
-| 2.8 | Planilha | Linhas novas em `Responsaveis` (senha `h1$…`), `Criancas` (com `Tipo`), `Vinculos` e `Membros` com `pendente` | ☐ |
+| 2.3 | Data de nascimento: digitar só números (`15031985`) | Vira `15/03/1985`; menor de 18 anos e data futura são recusados | ☐ |
+| 2.4 | Marcar uma pastoral só de adultos (ex.: Leitores) | Aparece o bloco da pastoral com "Eu" já marcado; pede a função | ☐ |
+| 2.5 | Marcar **Coroinhas** | Bloco com "Quem vai servir aqui?" sem ninguém marcado; enviar assim recusa | ☐ |
+| 2.6 | Coroinhas → "Meu filho(a)" → nome, data de nascimento e função → **Adicionar filho(a)** | O filho entra na lista com função e data; sem data ou com data futura recusa | ☐ |
+| 2.7 | Digitar um filho e enviar sem tocar em **Adicionar filho(a)** | Aviso "Toque em Adicionar filho(a) para incluir …" | ☐ |
+| 2.8 | Pai em Leitores e filho em Coroinhas, no mesmo cadastro | Duas pessoas, cada pedido para o coordenador da própria pastoral | ☐ |
+| 2.9 | Concluir | Mostra **"Seu usuário"** e o aviso de que o coordenador vai aprovar | ☐ |
+| 2.10 | **Entrar no app** | Abre a Agenda, já logado | ☐ |
+| 2.11 | E-mails | Usuário e link do app novo para a pessoa; aviso de pedido para cada coordenador envolvido | ☐ |
+| 2.12 | Planilha | Linhas novas em `Responsaveis` (senha `h1$…`, `Nascimento`), `Criancas` (`Tipo` e `Nascimento`), `Vinculos` e `Membros` com `pendente` | ☐ |
+| 2.13 | Coordenador → Painel → Membros | A criança aparece como "Criança · N anos · responsável: …"; a data de nascimento não aparece | ☐ |
 
 ## 3. Recuperar senha
 
@@ -134,9 +139,9 @@ Use uma conta com `Administrador = TRUE`. O administrador **não** vê pessoas, 
 | 6.5 | **Editar** horário e descrição | Salva; horário `7:30` é recusado, `07:30` salva | ☐ |
 | 6.6 | **Excluir** → **Confirmar exclusão** | A missa e as inscrições dela somem | ☐ |
 | 6.7 | **Gerar**: domingo, 10:00, 4 semanas | "4 missa(s) criada(s)"; repetir mantém as existentes | ☐ |
-| 6.8 | **Pastorais → Nova pastoral**: nome, buscar o coordenador, funções com mínimo e máximo | Aparece na lista com a coordenação | ☐ |
+| 6.8 | **Pastorais → Nova pastoral**: nome, buscar o coordenador, **Quem serve nesta pastoral** (Só adultos / Crianças e adultos), funções com mínimo e máximo | Aparece na lista com a coordenação e o tipo de público | ☐ |
 | 6.9 | A pessoa escolhida como coordenador entra de novo | Ganha a aba **Painel** da pastoral nova (sem virar administradora) | ☐ |
-| 6.10 | A pastoral nova no **Criar cadastro** | Aparece com as funções | ☐ |
+| 6.10 | A pastoral nova no **Criar cadastro** | Aparece para marcar, com as funções; se for "Crianças e adultos", pergunta quem serve | ☐ |
 | 6.11 | **Editar** pastoral: trocar coordenador, mudar vagas padrão, **Inativa** | A coordenação antiga perde o Painel; inativa some do cadastro | ☐ |
 
 ## 7. Segurança (rápido)

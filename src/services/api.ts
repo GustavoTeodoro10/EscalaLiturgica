@@ -202,6 +202,7 @@ export const api = {
       nome?: string;
       coordenadorId?: string;
       ativa?: boolean;
+      exigeResponsavel?: boolean;
       funcoes?: { id?: string; nome: string; minimo: number; maximo: number }[];
     },
   ): Promise<ResultadoAcao> {

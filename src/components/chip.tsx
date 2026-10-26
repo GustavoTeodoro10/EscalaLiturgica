@@ -9,8 +9,8 @@ type ChipProps = {
   rotulo: string;
   ativo: boolean;
   onPress: () => void;
-  /** `radio` para escolha única (padrão) ou `tab` para abas */
-  papel?: 'radio' | 'tab';
+  /** `radio` para escolha única (padrão), `checkbox` para marcar várias ou `tab` para abas */
+  papel?: 'radio' | 'checkbox' | 'tab';
   disabled?: boolean;
 };
 
@@ -22,7 +22,13 @@ export function Chip({ rotulo, ativo, onPress, papel = 'radio', disabled }: Chip
       onPress={onPress}
       disabled={disabled}
       accessibilityRole={papel}
-      accessibilityState={{ selected: ativo, disabled: !!disabled }}
+      // react-native-web não converte accessibilityState em ARIA: sem estes, o leitor de tela não sabe o que está marcado
+      aria-checked={papel === 'tab' ? undefined : ativo}
+      aria-selected={papel === 'tab' ? ativo : undefined}
+      aria-disabled={disabled ? true : undefined}
+      accessibilityState={
+        papel === 'checkbox' ? { checked: ativo, disabled: !!disabled } : { selected: ativo, disabled: !!disabled }
+      }
       estiloInterno={({ hovered }) => [
         styles.chip,
         {

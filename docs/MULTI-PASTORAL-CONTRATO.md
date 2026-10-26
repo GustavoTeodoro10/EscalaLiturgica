@@ -17,10 +17,10 @@
 
 | Aba | Colunas | Observação |
 |---|---|---|
-| `Responsaveis` | ID, Nome, Usuario, Senha, Email, Celular, Coordenador (antigo), **Administrador** | `Coordenador` só é lido na migração. |
-| `Criancas` | ID, Nome, Funcao (antigo), **Tipo** (`crianca` ou `adulto`) | Funciona como cadastro de pessoas. |
+| `Responsaveis` | ID, Nome, Usuario, Senha, Email, Celular, Coordenador (antigo), **Administrador**, **Nascimento** | `Coordenador` só é lido na migração. `Nascimento` em `AAAA-MM-DD` (a planilha pode convertê-lo em data; o servidor lê os dois). Contas antigas ficam em branco. |
+| `Criancas` | ID, Nome, Funcao (antigo), **Tipo** (`crianca` ou `adulto`), **Nascimento** | Funciona como cadastro de pessoas. Para adultos, repete o nascimento do responsável. A coordenação recebe só a **idade**, nunca a data. |
 | `Vinculos` | ResponsavelID, CriancaID | Para adultos, o responsável é a própria pessoa. |
-| **`Pastorais`** | ID, Nome, CoordenadorID, Ativa | |
+| **`Pastorais`** | ID, Nome, CoordenadorID, Ativa, **ExigeResponsavel** | `ExigeResponsavel` = `TRUE` quando crianças servem na pastoral (ex.: coroinhas): o cadastro pergunta quem serve, o adulto, o filho ou os dois. Vazio ou `FALSE` = só adultos por padrão. |
 | **`Funcoes`** | ID, PastoralID, Nome, MinPadrao, MaxPadrao | |
 | **`Membros`** | PessoaID, PastoralID, FuncaoID, Situacao (`ativo` ou `pendente`) | |
 | **`Eventos`** | ID, Data, Horario, Descricao | A missa existe uma vez. |

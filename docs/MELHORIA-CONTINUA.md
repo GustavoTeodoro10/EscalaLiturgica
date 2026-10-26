@@ -87,7 +87,7 @@ Fontes: painel do coordenador (resumo), aba `Responsaveis` e tela de Execuções
 | S-04 | Restringir o compartilhamento da planilha a quem precisa | Planilha tem dados de menores | 🔴 | P | ⏳ |
 | S-05 | Backup periódico da planilha | Perda por exclusão acidental | 🟡 | P | ⏳ |
 | S-06 | Registro de quem alterou a escala (auditoria) | Saber quem tirou ou colocou uma criança | 🟢 | M | ⏳ |
-| S-07 | Política de privacidade e aviso aos pais (LGPD) | Dados de crianças | 🟡 | P | ⏳ |
+| S-07 | Política de privacidade e aviso aos pais (LGPD) | Dados de crianças. **Agora inclui data de nascimento**: avisar no cadastro o que se coleta, para quê e quem vê (coordenação da pastoral vê só a idade; administração não vê pessoas) | 🔴 | P | ⏳ |
 
 ### 4.3 Qualidade técnica
 
@@ -134,6 +134,8 @@ Mais recente primeiro.
 
 | Data | O que mudou | Observação |
 |---|---|---|
+| 26/10/2026 | **Cadastro por pastoral e com data de nascimento**: dados pessoais primeiro, depois as pastorais (várias); em cada uma se escolhe quem serve (eu, filho(a) ou os dois). Pastoral que "exige responsável" (coroinhas) começa sem ninguém marcado. Data de nascimento do responsável (18 anos ou mais) e de cada filho. Coordenação vê a **idade**, não a data | Coluna `Nascimento` em `Responsaveis` e `Criancas`, `ExigeResponsavel` em `Pastorais` (interruptor no Admin); `migrarParaMultiPastoral()` cria as colunas e marca a pastoral de coroinhas. **Exige colar o `Código.js`, criar nova versão e rodar a migração**; chips marcáveis agora têm `aria-checked` na web. 80 testes |
+| 26/10/2026 | Contas anteriores a esta mudança não têm data de nascimento | A idade aparece em branco para elas; coletar depois (ideia: pedir no primeiro acesso) |
 | 13/10/2026 | **Multi-pastoral**: qualquer pastoral que serve nas missas; perfil **administrador** (cria missas e pastorais) e **coordenador por pastoral**; entrada em pastoral com aprovação; adultos servem por conta própria | `docs/MULTI-PASTORAL-CONTRATO.md`; servidor com abas novas e `migrarParaMultiPastoral()`; 70 testes unitários e 22 verificações no navegador |
 | 13/10/2026 | Gerar missas agora pula as que já existem (mesma data e horário) | Atende P-13 |
 | 13/10/2026 | Corrigido: aviso de confirmação entrava por cima do botão durante a animação | Aviso só com fade (`entradas.ts`) |

@@ -99,6 +99,8 @@ export type MembroDaPastoral = {
   pessoaId: string;
   nome: string;
   tipo: 'crianca' | 'adulto';
+  /** idade em anos; null quando o cadastro é antigo e não tem data de nascimento */
+  idade: number | null;
   funcaoId: string;
   funcao: string;
   situacao: Situacao;
@@ -121,6 +123,8 @@ export type PastoralAdmin = {
   id: string;
   nome: string;
   ativa: boolean;
+  /** o cadastro de quem serve nessa pastoral pede os dados do responsável e da criança (ex.: coroinhas) */
+  exigeResponsavel: boolean;
   coordenadorId: string;
   coordenador: string;
   funcoes: FuncaoAdmin[];
@@ -154,6 +158,7 @@ export type ConfigGeracao = {
 export type NovaPastoral = {
   nome: string;
   coordenadorId: string;
+  exigeResponsavel: boolean;
   funcoes: { nome: string; minimo: number; maximo: number }[];
 };
 
@@ -162,6 +167,8 @@ export type NovaPastoral = {
 export type PastoralPublica = {
   id: string;
   nome: string;
+  /** quem serve aqui pode ser uma criança, então o cadastro pergunta pelos filhos (ex.: coroinhas) */
+  exigeResponsavel: boolean;
   funcoes: { id: string; nome: string }[];
 };
 
@@ -172,7 +179,9 @@ export type NovoCadastro = {
   email: string;
   celular: string;
   senha: string;
-  /** se o próprio responsável também serve */
-  euSirvo: Escolha | null;
-  filhos: { nome: string; pastoralId: string; funcaoId: string }[];
+  /** nascimento do responsável, "AAAA-MM-DD" */
+  nascimento: string;
+  /** funções em que o próprio responsável serve (vazio se ele só cadastra os filhos) */
+  euSirvo: Escolha[];
+  filhos: { nome: string; nascimento: string; pastoralId: string; funcaoId: string }[];
 };

@@ -15,6 +15,9 @@ const ymd = (delta) => {
 
 const ids = (lista) => lista.map((x) => x.id);
 
+const NASC_ADULTO = '1985-03-15';
+const NASC_FILHO = '2015-01-05';
+
 /* ---------- migração ---------- */
 
 test('migração: cria a pastoral de Coroinhas, converte membros, missas e escalas, e é idempotente', () => {
@@ -26,7 +29,10 @@ test('migração: cria a pastoral de Coroinhas, converte membros, missas e escal
   assert.equal(r.sucesso, true);
   assert.equal(r.jaMigrado, false);
 
-  assert.deepEqual(plain(a.abas.Pastorais[1]), ['P001', 'Coroinhas e Cerimoniários', 'R001', true]);
+  assert.deepEqual(plain(a.abas.Pastorais[1]), ['P001', 'Coroinhas e Cerimoniários', 'R001', true, true], 'coroinhas exige responsável');
+  assert.equal(a.abas.Pastorais[0][4], 'ExigeResponsavel');
+  assert.equal(a.abas.Responsaveis[0][8], 'Nascimento');
+  assert.equal(a.abas.Criancas[0][4], 'Nascimento');
   assert.deepEqual(plain(a.abas.Funcoes.slice(1).map((f) => f[2])), ['Coroinha', 'Cerimoniário']);
   assert.equal(a.abas.Membros.length, 4); // cabeçalho + Ana, Beto, Caio
   assert.ok(a.abas.Membros.slice(1).every((m) => m[3] === 'ativo'));
@@ -54,9 +60,9 @@ test('migração: cria a pastoral de Coroinhas, converte membros, missas e escal
 test('cadastro: adulto e filho entram como pendentes e o coordenador é avisado', () => {
   const { ctx, abas, emails } = novoAmbiente();
   const r = plain(ctx.cadastrarResponsavel({
-    nome: 'Joana Lima', email: 'joana@x.com', celular: '(11) 98888-7777', senha: 'abcdef',
-    euSirvo: { pastoralId: 'P002', funcaoId: 'F003' },
-    filhos: [{ nome: 'Davi', pastoralId: 'P001', funcaoId: 'F001' }],
+    nome: 'Joana Lima', email: 'joana@x.com', celular: '(11) 98888-7777', senha: 'abcdef', nascimento: NASC_ADULTO,
+    euSirvo: [{ pastoralId: 'P002', funcaoId: 'F003' }],
+    filhos: [{ nome: 'Davi', nascimento: NASC_FILHO, pastoralId: 'P001', funcaoId: 'F001' }],
   }));
   assert.equal(r.sucesso, true);
   assert.equal(r.administrador, false);
@@ -71,6 +77,11 @@ test('cadastro: adulto e filho entram como pendentes e o coordenador é avisado'
   assert.match(nova[3], /^h1\$/);
   assert.equal(nova[6], false);
   assert.equal(nova[7], false, 'cadastro nunca vira administrador');
+  assert.equal(nova[8], NASC_ADULTO, 'nascimento do responsável');
+  assert.deepEqual(
+    abas.Criancas.slice(-2).map((c) => [c[1], c[3], c[4]]),
+    [['Joana Lima', 'adulto', NASC_ADULTO], ['Davi', 'crianca', NASC_FILHO]],
+  );
 
   // e-mail de boas-vindas + um aviso para cada coordenador (P001 e P002)
   const para = emails.map((e) => e.to).sort();
@@ -80,8 +91,8 @@ test('cadastro: adulto e filho entram como pendentes e o coordenador é avisado'
 test('cadastro: pessoa pendente ainda não pode ser escalada', () => {
   const { ctx } = novoAmbiente();
   const r = plain(ctx.cadastrarResponsavel({
-    nome: 'Joana Lima', email: 'joana@x.com', senha: 'abcdef',
-    filhos: [{ nome: 'Davi', pastoralId: 'P001', funcaoId: 'F001' }],
+    nome: 'Joana Lima', email: 'joana@x.com', senha: 'abcdef', nascimento: NASC_ADULTO,
+    filhos: [{ nome: 'Davi', nascimento: NASC_FILHO, pastoralId: 'P001', funcaoId: 'F001' }],
   }));
   const davi = r.pessoas[0];
   const res = plain(ctx.inscrever(r.token, 'E001', davi.id, 'F001'));
@@ -91,20 +102,21 @@ test('cadastro: pessoa pendente ainda não pode ser escalada', () => {
 
 test('cadastro: valida pastoral/função, exige alguém para servir e limpa HTML e fórmulas', () => {
   const { ctx, abas } = novoAmbiente();
-  const base = { nome: 'Maria Silva', email: 'm@x.com', senha: 'abcdef' };
+  const base = { nome: 'Maria Silva', email: 'm@x.com', senha: 'abcdef', nascimento: NASC_ADULTO };
+  const filho = (extra) => ({ nome: 'A', nascimento: NASC_FILHO, pastoralId: 'P001', funcaoId: 'F001', ...extra });
   const ruim = (extra) => plain(ctx.cadastrarResponsavel({ ...base, ...extra }));
 
   assert.equal(ruim({}).sucesso, false, 'sem ninguém para servir');
-  assert.equal(ruim({ filhos: [{ nome: 'A', pastoralId: 'P001', funcaoId: 'F003' }] }).sucesso, false, 'função de outra pastoral');
-  assert.equal(ruim({ filhos: [{ nome: 'A', pastoralId: 'P999', funcaoId: 'F001' }] }).sucesso, false, 'pastoral inexistente');
-  assert.equal(ruim({ euSirvo: { pastoralId: 'P001', funcaoId: 'F003' } }).sucesso, false);
-  assert.equal(ruim({ senha: '123', filhos: [{ nome: 'A', pastoralId: 'P001', funcaoId: 'F001' }] }).sucesso, false);
+  assert.equal(ruim({ filhos: [filho({ funcaoId: 'F003' })] }).sucesso, false, 'função de outra pastoral');
+  assert.equal(ruim({ filhos: [filho({ pastoralId: 'P999' })] }).sucesso, false, 'pastoral inexistente');
+  assert.equal(ruim({ euSirvo: [{ pastoralId: 'P001', funcaoId: 'F003' }] }).sucesso, false);
+  assert.equal(ruim({ senha: '123', filhos: [filho()] }).sucesso, false);
   assert.equal(abas.Responsaveis.length, 6, 'nenhum cadastro inválido pode ter sido gravado');
 
   const ok = ruim({
     nome: '=HYPERLINK("http://x")<b>Maria</b> Silva',
     celular: '+55 (11) 98888-7777',
-    filhos: [{ nome: '<img src=x onerror=alert(1)>Joao', pastoralId: 'P001', funcaoId: 'F001' }],
+    filhos: [filho({ nome: '<img src=x onerror=alert(1)>Joao' })],
   });
   assert.equal(ok.sucesso, true);
   const nova = abas.Responsaveis[abas.Responsaveis.length - 1];

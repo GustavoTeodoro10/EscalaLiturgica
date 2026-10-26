@@ -8,6 +8,7 @@ import {
   eventoDeServidor,
   eventosDeServidor,
   limitesParaServidor,
+  membroDaPastoralDeServidor,
   pastoraisPublicasDeServidor,
   resumoDeServidor,
   sessaoDeLogin,
@@ -121,9 +122,24 @@ test('administracaoDeServidor e pastorais públicas', () => {
   assert.equal(a.usuarios.length, 1);
   assert.equal(a.missas[0].pastorais[0].escalados, 2);
 
-  const p = pastoraisPublicasDeServidor([{ id: 'P001', nome: 'Coroinhas', funcoes: [{ id: 'F001', nome: 'Coroinha' }, {}] }, {}]);
-  assert.equal(p.length, 1);
+  assert.equal(a.pastorais[0].exigeResponsavel, false, 'sem o campo, a pastoral é só de adultos');
+
+  const p = pastoraisPublicasDeServidor([
+    { id: 'P001', nome: 'Coroinhas', exigeResponsavel: true, funcoes: [{ id: 'F001', nome: 'Coroinha' }, {}] },
+    { id: 'P002', nome: 'Leitores', funcoes: [] },
+    {},
+  ]);
+  assert.equal(p.length, 2);
   assert.deepEqual(p[0].funcoes, [{ id: 'F001', nome: 'Coroinha' }]);
+  assert.equal(p[0].exigeResponsavel, true);
+  assert.equal(p[1].exigeResponsavel, false, 'campo ausente (servidor antigo) = só adultos');
+});
+
+test('membro da pastoral traz a idade só quando o servidor a envia', () => {
+  const m = membroDaPastoralDeServidor({ pessoaId: 'C001', funcaoId: 'F001', nome: 'Ana', tipo: 'crianca', idade: 10 });
+  assert.equal(m?.idade, 10);
+  assert.equal(membroDaPastoralDeServidor({ pessoaId: 'C001', funcaoId: 'F001', nome: 'Ana' })?.idade, null);
+  assert.equal(membroDaPastoralDeServidor({ pessoaId: 'C001', funcaoId: 'F001', idade: 'dez' })?.idade, null);
 });
 
 test('o que vai para o servidor leva só os campos esperados', () => {
@@ -132,11 +148,15 @@ test('o que vai para o servidor leva só os campos esperados', () => {
     [{ funcaoId: 'F001', minimo: 1, maximo: 3 }],
   );
   const c = cadastroParaServidor({
-    nome: 'Joana Lima', email: 'j@x.com', celular: '', senha: 'abcdef',
-    euSirvo: { pastoralId: 'P002', funcaoId: 'F003' },
-    filhos: [{ nome: 'Davi', pastoralId: 'P001', funcaoId: 'F001' }],
+    nome: 'Joana Lima', email: 'j@x.com', celular: '', senha: 'abcdef', nascimento: '1985-03-15',
+    euSirvo: [{ pastoralId: 'P002', funcaoId: 'F003' }, { pastoralId: 'P003', funcaoId: 'F009' }],
+    filhos: [{ nome: 'Davi', nascimento: '2015-01-05', pastoralId: 'P001', funcaoId: 'F001' }],
   });
-  assert.deepEqual(c.euSirvo, { pastoralId: 'P002', funcaoId: 'F003' });
-  assert.deepEqual(c.filhos, [{ nome: 'Davi', pastoralId: 'P001', funcaoId: 'F001' }]);
-  assert.equal(cadastroParaServidor({ nome: 'A B', email: 'a@b.c', celular: '', senha: 'x', euSirvo: null, filhos: [] }).euSirvo, null);
+  assert.equal(c.nascimento, '1985-03-15');
+  assert.deepEqual(c.euSirvo, [{ pastoralId: 'P002', funcaoId: 'F003' }, { pastoralId: 'P003', funcaoId: 'F009' }]);
+  assert.deepEqual(c.filhos, [{ nome: 'Davi', nascimento: '2015-01-05', pastoralId: 'P001', funcaoId: 'F001' }]);
+  assert.deepEqual(
+    cadastroParaServidor({ nome: 'A B', email: 'a@b.c', celular: '', senha: 'x', nascimento: '1980-01-01', euSirvo: [], filhos: [] }).euSirvo,
+    [],
+  );
 });

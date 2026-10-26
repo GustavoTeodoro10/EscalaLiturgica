@@ -13,8 +13,8 @@ Com ele você escolhe a pastoral, pede para servir e escolhe as missas direto pe
 
 Acesse: https://escalaliturgica.vercel.app
 
-1) Toque em "Criar cadastro" e preencha seus dados.
-2) Escolha a pastoral e a função (você e/ou seus filhos).
+1) Toque em "Criar cadastro" e preencha seus dados (inclui a data de nascimento).
+2) Marque as pastorais em que você e/ou seus filhos servem e diga quem serve em cada uma (nos Coroinhas, informe o nome e a data de nascimento do filho).
 3) Guarde o usuário que o app mostrar. Ele também chega no seu e-mail.
 4) O coordenador da pastoral aprova o seu pedido. Depois é só abrir "Vagas" e escolher a missa.
 

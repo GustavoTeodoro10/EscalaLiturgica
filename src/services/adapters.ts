@@ -197,6 +197,7 @@ export function membroDaPastoralDeServidor(item: unknown): MembroDaPastoral | nu
     pessoaId: texto(m.pessoaId),
     nome: texto(m.nome),
     tipo: m.tipo === 'adulto' ? 'adulto' : 'crianca',
+    idade: typeof m.idade === 'number' && Number.isFinite(m.idade) ? m.idade : null,
     funcaoId: texto(m.funcaoId),
     funcao: texto(m.funcao),
     situacao: situacao(m.situacao),
@@ -211,6 +212,7 @@ export function pastoraisPublicasDeServidor(bruto: unknown): PastoralPublica[] {
     return {
       id: texto(p.id),
       nome: texto(p.nome),
+      exigeResponsavel: p.exigeResponsavel === true,
       funcoes: lista(p.funcoes, (x) => {
         const f = obj(x);
         return f.id ? { id: texto(f.id), nome: texto(f.nome) } : null;
@@ -229,6 +231,7 @@ export function administracaoDeServidor(bruto: unknown): Administracao {
         id: texto(p.id),
         nome: texto(p.nome),
         ativa: p.ativa !== false,
+        exigeResponsavel: p.exigeResponsavel === true,
         coordenadorId: texto(p.coordenadorId),
         coordenador: texto(p.coordenador),
         funcoes: lista(p.funcoes, (x): FuncaoAdmin | null => {
@@ -273,7 +276,13 @@ export function cadastroParaServidor(c: NovoCadastro) {
     email: c.email,
     celular: c.celular,
     senha: c.senha,
-    euSirvo: c.euSirvo ? { pastoralId: c.euSirvo.pastoralId, funcaoId: c.euSirvo.funcaoId } : null,
-    filhos: c.filhos.map((f) => ({ nome: f.nome, pastoralId: f.pastoralId, funcaoId: f.funcaoId })),
+    nascimento: c.nascimento,
+    euSirvo: c.euSirvo.map((e) => ({ pastoralId: e.pastoralId, funcaoId: e.funcaoId })),
+    filhos: c.filhos.map((f) => ({
+      nome: f.nome,
+      nascimento: f.nascimento,
+      pastoralId: f.pastoralId,
+      funcaoId: f.funcaoId,
+    })),
   };
 }

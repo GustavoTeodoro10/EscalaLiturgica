@@ -3,10 +3,10 @@
  * ---------------------------------------------------------------------------------
  * Modelo (rode migrarParaMultiPastoral() uma vez para criar/converter as abas):
  *
- *  "Responsaveis" -> ID | Nome | Usuario | Senha | Email | Celular | Coordenador (antigo) | Administrador
- *  "Criancas"     -> ID | Nome | Funcao (antigo) | Tipo (crianca/adulto)     (cadastro de pessoas)
+ *  "Responsaveis" -> ID | Nome | Usuario | Senha | Email | Celular | Coordenador (antigo) | Administrador | Nascimento
+ *  "Criancas"     -> ID | Nome | Funcao (antigo) | Tipo (crianca/adulto) | Nascimento   (cadastro de pessoas)
  *  "Vinculos"     -> ResponsavelID | CriancaID                                (para adultos, o próprio)
- *  "Pastorais"    -> ID | Nome | CoordenadorID | Ativa
+ *  "Pastorais"    -> ID | Nome | CoordenadorID | Ativa | ExigeResponsavel
  *  "Funcoes"      -> ID | PastoralID | Nome | MinPadrao | MaxPadrao
  *  "Membros"      -> PessoaID | PastoralID | FuncaoID | Situacao (ativo/pendente)
  *  "Eventos"      -> ID | Data | Horario | Descricao                          (a missa existe uma vez)
@@ -166,15 +166,15 @@ function exigirAdmin_() {
 function configurarPlanilha() {
   exigirAdmin_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const resp = abaOuNova_(ss, ABA_RESPONSAVEIS, ['ID', 'Nome', 'Usuario', 'Senha', 'Email', 'Celular', 'Coordenador', 'Administrador']);
+  const resp = abaOuNova_(ss, ABA_RESPONSAVEIS, ['ID', 'Nome', 'Usuario', 'Senha', 'Email', 'Celular', 'Coordenador', 'Administrador', 'Nascimento']);
   if (resp.getLastRow() === 1) {
     resp.appendRow(['R001', 'Administrador Exemplo', 'Administrador.Exemplo', codificarSenha_('troque-esta-senha'),
       'admin@exemplo.com', '(11) 90000-0000', false, true]);
   }
-  abaOuNova_(ss, ABA_CRIANCAS, ['ID', 'Nome', 'Funcao', 'Tipo']);
+  abaOuNova_(ss, ABA_CRIANCAS, ['ID', 'Nome', 'Funcao', 'Tipo', 'Nascimento']);
   abaOuNova_(ss, ABA_VINCULOS, ['ResponsavelID', 'CriancaID']);
   abaOuNova_(ss, ABA_RESET, ['Token', 'ResponsavelID', 'ExpiraEm', 'Usado']);
-  abaOuNova_(ss, ABA_PASTORAIS, ['ID', 'Nome', 'CoordenadorID', 'Ativa']);
+  abaOuNova_(ss, ABA_PASTORAIS, ['ID', 'Nome', 'CoordenadorID', 'Ativa', 'ExigeResponsavel']);
   abaOuNova_(ss, ABA_FUNCOES, ['ID', 'PastoralID', 'Nome', 'MinPadrao', 'MaxPadrao']);
   abaOuNova_(ss, ABA_MEMBROS, ['PessoaID', 'PastoralID', 'FuncaoID', 'Situacao']);
   abaOuNova_(ss, ABA_EVENTOS, ['ID', 'Data', 'Horario', 'Descricao']);
@@ -277,6 +277,50 @@ function numeroLimitado_(valor, max) {
   const n = Math.floor(Number(valor));
   if (isNaN(n) || n < 0) return 0;
   return Math.min(n, max);
+}
+
+/** Idade completa em anos de quem nasceu em `nascimento` (Date), contada até `hoje` (Date). */
+function idadeEm_(nascimento, hoje) {
+  let idade = hoje.getFullYear() - nascimento.getFullYear();
+  const antes = hoje.getMonth() < nascimento.getMonth() ||
+    (hoje.getMonth() === nascimento.getMonth() && hoje.getDate() < nascimento.getDate());
+  return antes ? idade - 1 : idade;
+}
+
+/**
+ * Valida uma data de nascimento 'AAAA-MM-DD'. Devolve { iso } ou { erro: 'obrigatoria'|'invalida'|'futura'|'menor' }.
+ * `idadeMinima` (opcional) recusa quem é mais novo que isso.
+ */
+function validarNascimento_(texto, idadeMinima) {
+  const vazio = texto === null || texto === undefined || String(texto).trim() === '';
+  if (vazio) return { erro: 'obrigatoria' };
+  const data = dataDeTexto_(String(texto).trim());
+  if (!data) return { erro: 'invalida' };
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  if (data > hoje) return { erro: 'futura' };
+  const idade = idadeEm_(data, hoje);
+  if (idade > 110) return { erro: 'invalida' };
+  if (idadeMinima && idade < idadeMinima) return { erro: 'menor' };
+  return { iso: String(texto).trim() };
+}
+
+/** Lê a célula de nascimento (a planilha pode converter o texto em data) e devolve 'AAAA-MM-DD' ou ''. */
+function nascimentoDaCelula_(valor) {
+  if (Object.prototype.toString.call(valor) === '[object Date]' && !isNaN(valor)) {
+    return Utilities.formatDate(valor, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  const texto = String(valor === null || valor === undefined ? '' : valor).trim();
+  return dataDeTexto_(texto) ? texto : '';
+}
+
+/** Idade em anos a partir de 'AAAA-MM-DD', ou null quando não há data. */
+function idadeDeNascimento_(iso) {
+  const data = iso ? dataDeTexto_(iso) : null;
+  if (!data) return null;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  return Math.max(0, idadeEm_(data, hoje));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -502,9 +546,9 @@ function montarRespostaLogin_(resp, token) {
 
 /**
  * Cadastra um novo responsável e já retorna logado.
- * dados: { nome, email, celular, senha,
- *          euSirvo: { pastoralId, funcaoId } | null,
- *          filhos: [{ nome, pastoralId, funcaoId }] }
+ * dados: { nome, email, celular, senha, nascimento: 'AAAA-MM-DD',
+ *          euSirvo: [{ pastoralId, funcaoId }] (aceita também um objeto só) | null,
+ *          filhos: [{ nome, nascimento: 'AAAA-MM-DD', pastoralId, funcaoId }] }
  * Toda participação nasce "pendente" até o coordenador da pastoral aprovar.
  */
 function cadastrarResponsavel(dados) {
@@ -532,11 +576,25 @@ function cadastrarResponsavel(dados) {
     })[0] || null;
   };
 
-  let eu = null;
-  const entradaEu = dados.euSirvo;
-  if (entradaEu && entradaEu.funcaoId) {
-    eu = funcaoValida(entradaEu.pastoralId, entradaEu.funcaoId);
-    if (!eu) return { sucesso: false, mensagem: 'Escolha a pastoral e a função em que você vai servir.' };
+  const nascimento = validarNascimento_(dados.nascimento, 18);
+  if (nascimento.erro) {
+    const textos = {
+      obrigatoria: 'Informe a sua data de nascimento.',
+      invalida: 'A sua data de nascimento não é válida.',
+      futura: 'A sua data de nascimento não pode ser no futuro.',
+      menor: 'O cadastro é do responsável, que precisa ter 18 anos ou mais.'
+    };
+    return { sucesso: false, mensagem: textos[nascimento.erro] };
+  }
+
+  const entradasEu = Array.isArray(dados.euSirvo) ? dados.euSirvo.slice(0, 6) : (dados.euSirvo ? [dados.euSirvo] : []);
+  const eu = [];
+  for (let i = 0; i < entradasEu.length; i++) {
+    const e = entradasEu[i] || {};
+    if (!e.funcaoId) continue;
+    const funcao = funcaoValida(e.pastoralId, e.funcaoId);
+    if (!funcao) return { sucesso: false, mensagem: 'Escolha a pastoral e a função em que você vai servir.' };
+    if (!eu.some(function (x) { return x.id === funcao.id; })) eu.push(funcao);
   }
 
   const filhosEntrada = Array.isArray(dados.filhos) ? dados.filhos.slice(0, 8) : [];
@@ -547,10 +605,21 @@ function cadastrarResponsavel(dados) {
     if (!nomeFilho) continue;
     const funcao = funcaoValida(f.pastoralId, f.funcaoId);
     if (!funcao) return { sucesso: false, mensagem: 'Escolha a pastoral e a função de ' + nomeFilho + '.' };
-    filhos.push({ nome: nomeFilho, funcao: funcao });
+    const nascFilho = validarNascimento_(f.nascimento);
+    if (nascFilho.erro === 'obrigatoria') return { sucesso: false, mensagem: 'Informe a data de nascimento de ' + nomeFilho + '.' };
+    if (nascFilho.erro === 'futura') return { sucesso: false, mensagem: 'A data de nascimento de ' + nomeFilho + ' não pode ser no futuro.' };
+    if (nascFilho.erro) return { sucesso: false, mensagem: 'A data de nascimento de ' + nomeFilho + ' não é válida.' };
+    // o mesmo filho (nome e nascimento) em mais de uma pastoral é uma pessoa só, com várias funções
+    const chave = removerAcentos_(nomeFilho).toLowerCase() + '|' + nascFilho.iso;
+    const jaTem = filhos.filter(function (x) { return x.chave === chave; })[0];
+    if (jaTem) {
+      if (!jaTem.funcoes.some(function (x) { return x.id === funcao.id; })) jaTem.funcoes.push(funcao);
+    } else {
+      filhos.push({ chave: chave, nome: nomeFilho, nascimento: nascFilho.iso, funcoes: [funcao] });
+    }
   }
 
-  if (!eu && filhos.length === 0) {
+  if (eu.length === 0 && filhos.length === 0) {
     return { sucesso: false, mensagem: 'Informe quem vai servir: você, um filho(a) ou os dois.' };
   }
 
@@ -574,18 +643,20 @@ function cadastrarResponsavel(dados) {
     const respId = proximoId_(respSheet, 'R');
     const celulaSenha = codificarSenha_(senha);
 
-    respSheet.appendRow([respId, nome, usuario, celulaSenha, email, celular, false, false]);
+    respSheet.appendRow([respId, nome, usuario, celulaSenha, email, celular, false, false, nascimento.iso]);
 
     const pedidos = [];
-    const adicionarPessoa = function (nomePessoa, tipo, funcao) {
+    const adicionarPessoa = function (nomePessoa, tipo, nascimentoPessoa, funcoesDaPessoa) {
       const pessoaId = proximoId_(pessoaSheet, 'C');
-      pessoaSheet.appendRow([pessoaId, nomePessoa, '', tipo]);
+      pessoaSheet.appendRow([pessoaId, nomePessoa, '', tipo, nascimentoPessoa]);
       vincSheet.appendRow([respId, pessoaId]);
-      membrosSheet.appendRow([pessoaId, funcao.pastoralId, funcao.id, 'pendente']);
-      pedidos.push({ pastoralId: funcao.pastoralId, pessoaNome: nomePessoa, funcaoNome: funcao.nome });
+      funcoesDaPessoa.forEach(function (funcao) {
+        membrosSheet.appendRow([pessoaId, funcao.pastoralId, funcao.id, 'pendente']);
+        pedidos.push({ pastoralId: funcao.pastoralId, pessoaNome: nomePessoa, funcaoNome: funcao.nome });
+      });
     };
-    if (eu) adicionarPessoa(nome, 'adulto', eu);
-    filhos.forEach(function (filho) { adicionarPessoa(filho.nome, 'crianca', filho.funcao); });
+    if (eu.length > 0) adicionarPessoa(nome, 'adulto', nascimento.iso, eu);
+    filhos.forEach(function (filho) { adicionarPessoa(filho.nome, 'crianca', filho.nascimento, filho.funcoes); });
 
     try {
       MailApp.sendEmail({
@@ -734,6 +805,7 @@ function lerPastorais_() {
       nome: String(dados[i][1] || ''),
       coordenadorId: String(dados[i][2] || ''),
       ativa: ativa === '' || ativa === undefined || ativa === null ? true : ehVerdadeiro_(ativa),
+      exigeResponsavel: ehVerdadeiro_(dados[i][4]),
       linha: i + 1
     });
   }
@@ -783,7 +855,8 @@ function lerPessoas_() {
     mapa[String(id)] = {
       id: String(id),
       nome: String(dados[i][1] || ''),
-      tipo: String(dados[i][3] || '').toLowerCase() === 'adulto' ? 'adulto' : 'crianca'
+      tipo: String(dados[i][3] || '').toLowerCase() === 'adulto' ? 'adulto' : 'crianca',
+      nascimento: nascimentoDaCelula_(dados[i][4])
     };
   }
   return mapa;
@@ -969,6 +1042,7 @@ function listarPastoraisPublico() {
     return {
       id: p.id,
       nome: p.nome,
+      exigeResponsavel: p.exigeResponsavel,
       funcoes: funcoes
         .filter(function (f) { return f.pastoralId === p.id; })
         .map(function (f) { return { id: f.id, nome: f.nome }; })
@@ -1160,6 +1234,8 @@ function listarMembros(sessao, pastoralId) {
         pessoaId: m.pessoaId,
         nome: pessoas[m.pessoaId].nome,
         tipo: pessoas[m.pessoaId].tipo,
+        // só a idade: a coordenação não precisa da data de nascimento
+        idade: idadeDeNascimento_(pessoas[m.pessoaId].nascimento),
         funcaoId: m.funcaoId,
         funcao: f ? f.nome : '',
         situacao: m.situacao,
@@ -1444,6 +1520,7 @@ function obterAdministracao(sessao) {
         id: p.id,
         nome: p.nome,
         ativa: p.ativa,
+        exigeResponsavel: p.exigeResponsavel,
         coordenadorId: p.coordenadorId,
         coordenador: coord ? coord.nome : '',
         funcoes: funcoes
@@ -1487,7 +1564,7 @@ function limparFuncoesEntrada_(funcoesEntrada) {
   return { funcoes: saida };
 }
 
-/** dados: { nome, coordenadorId, funcoes: [{ nome, minimo, maximo }] } */
+/** dados: { nome, coordenadorId, exigeResponsavel?, funcoes: [{ nome, minimo, maximo }] } */
 function criarPastoral(sessao, dados) {
   exigirAdministrador_(sessao);
   dados = dados || {};
@@ -1509,7 +1586,7 @@ function criarPastoral(sessao, dados) {
     const pastoraisSheet = ss.getSheetByName(ABA_PASTORAIS);
     const funcoesSheet = ss.getSheetByName(ABA_FUNCOES);
     const id = proximoId_(pastoraisSheet, 'P');
-    pastoraisSheet.appendRow([id, nome, coordenadorId, true]);
+    pastoraisSheet.appendRow([id, nome, coordenadorId, true, dados.exigeResponsavel === true]);
     f.funcoes.forEach(function (fn) {
       funcoesSheet.appendRow([proximoId_(funcoesSheet, 'F'), id, fn.nome, fn.minimo, fn.maximo]);
     });
@@ -1520,7 +1597,7 @@ function criarPastoral(sessao, dados) {
 }
 
 /**
- * dados: { nome?, coordenadorId?, ativa?, funcoes?: [{ id?, nome, minimo, maximo }] }
+ * dados: { nome?, coordenadorId?, ativa?, exigeResponsavel?, funcoes?: [{ id?, nome, minimo, maximo }] }
  * Função com `id` é atualizada; sem `id` é criada. Funções não são apagadas (as escalas dependem delas).
  */
 function editarPastoral(sessao, pastoralId, dados) {
@@ -1561,6 +1638,7 @@ function editarPastoral(sessao, pastoralId, dados) {
     }
     if (coordenadorId !== null) sheet.getRange(pastoral.linha, 3).setValue(coordenadorId);
     if (dados.ativa !== undefined) sheet.getRange(pastoral.linha, 4).setValue(dados.ativa === true);
+    if (dados.exigeResponsavel !== undefined) sheet.getRange(pastoral.linha, 5).setValue(dados.exigeResponsavel === true);
 
     if (f) {
       const funcoesSheet = ss.getSheetByName(ABA_FUNCOES);
@@ -1829,15 +1907,25 @@ function migrarParaMultiPastoral() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    const resp = abaOuNova_(ss, ABA_RESPONSAVEIS, ['ID', 'Nome', 'Usuario', 'Senha', 'Email', 'Celular', 'Coordenador', 'Administrador']);
+    const resp = abaOuNova_(ss, ABA_RESPONSAVEIS, ['ID', 'Nome', 'Usuario', 'Senha', 'Email', 'Celular', 'Coordenador', 'Administrador', 'Nascimento']);
     const respDados = resp.getDataRange().getValues();
     if (String(respDados[0][7] || '') === '') resp.getRange(1, 8).setValue('Administrador');
-    const criancas = abaOuNova_(ss, ABA_CRIANCAS, ['ID', 'Nome', 'Funcao', 'Tipo']);
+    if (String(respDados[0][8] || '') === '') resp.getRange(1, 9).setValue('Nascimento');
+    const criancas = abaOuNova_(ss, ABA_CRIANCAS, ['ID', 'Nome', 'Funcao', 'Tipo', 'Nascimento']);
     if (String(criancas.getDataRange().getValues()[0][3] || '') === '') criancas.getRange(1, 4).setValue('Tipo');
+    if (String(criancas.getDataRange().getValues()[0][4] || '') === '') criancas.getRange(1, 5).setValue('Nascimento');
     abaOuNova_(ss, ABA_VINCULOS, ['ResponsavelID', 'CriancaID']);
     abaOuNova_(ss, ABA_RESET, ['Token', 'ResponsavelID', 'ExpiraEm', 'Usado']);
 
-    const pastoraisSheet = abaOuNova_(ss, ABA_PASTORAIS, ['ID', 'Nome', 'CoordenadorID', 'Ativa']);
+    const pastoraisSheet = abaOuNova_(ss, ABA_PASTORAIS, ['ID', 'Nome', 'CoordenadorID', 'Ativa', 'ExigeResponsavel']);
+    if (String(pastoraisSheet.getDataRange().getValues()[0][4] || '') === '') pastoraisSheet.getRange(1, 5).setValue('ExigeResponsavel');
+    // pastoral de coroinhas já existente: a célula vazia passa a "sim" (uma vez; depois vale o que estiver na planilha)
+    lerPastorais_().forEach(function (p) {
+      const celula = pastoraisSheet.getRange(p.linha, 5).getValue();
+      if (celula === '' && removerAcentos_(p.nome).toLowerCase().indexOf('coroinha') !== -1) {
+        pastoraisSheet.getRange(p.linha, 5).setValue(true);
+      }
+    });
     const funcoesSheet = abaOuNova_(ss, ABA_FUNCOES, ['ID', 'PastoralID', 'Nome', 'MinPadrao', 'MaxPadrao']);
     const membrosSheet = abaOuNova_(ss, ABA_MEMBROS, ['PessoaID', 'PastoralID', 'FuncaoID', 'Situacao']);
     const eventosSheet = abaOuNova_(ss, ABA_EVENTOS, ['ID', 'Data', 'Horario', 'Descricao']);
@@ -1861,7 +1949,7 @@ function migrarParaMultiPastoral() {
     const minC = Number(base[3]) || 3, maxC = Number(base[4]) || 6;
     const minCe = Number(base[6]) || 2, maxCe = Number(base[7]) || 4;
 
-    pastoraisSheet.appendRow(['P001', 'Coroinhas e Cerimoniários', coordenadoresAntigos[0] || '', true]);
+    pastoraisSheet.appendRow(['P001', 'Coroinhas e Cerimoniários', coordenadoresAntigos[0] || '', true, true]);
     funcoesSheet.appendRow(['F001', 'P001', 'Coroinha', minC, maxC]);
     funcoesSheet.appendRow(['F002', 'P001', 'Cerimoniário', minCe, maxCe]);
     const funcaoPorNome = { 'coroinha': 'F001', 'cerimoniario': 'F002' };

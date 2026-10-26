@@ -15,7 +15,8 @@ import { plural } from '@/utils/rotulos';
 
 function descricao(m: MembroDaPastoral): string {
   const quem = m.tipo === 'adulto' ? 'Adulto' : 'Criança';
-  return m.responsavel && m.tipo === 'crianca' ? `${quem} · responsável: ${m.responsavel}` : quem;
+  const comIdade = m.idade === null ? quem : `${quem} · ${m.idade} ${m.idade === 1 ? 'ano' : 'anos'}`;
+  return m.responsavel && m.tipo === 'crianca' ? `${comIdade} · responsável: ${m.responsavel}` : comIdade;
 }
 
 /** Pedidos de entrada para aprovar e lista de quem já participa da pastoral. */

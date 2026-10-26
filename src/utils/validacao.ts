@@ -58,6 +58,39 @@ export function somenteDigitos(valor: string): string {
   return valor.replace(/\D/g, '');
 }
 
+/** Vai colocando as barras enquanto a pessoa digita só números: "15031985" -> "15/03/1985". */
+export function mascaraData(valor: string): string {
+  const d = somenteDigitos(valor).slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+  return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+}
+
+export type ResultadoNascimento = { iso: string } | { erro: string };
+
+/**
+ * Data de nascimento digitada como "dd/mm/aaaa" (ano com 4 dígitos) -> "AAAA-MM-DD".
+ * `idadeMinima` recusa quem é mais novo (ex.: 18 para o responsável). `hoje` existe para os testes.
+ */
+export function nascimentoParaIso(valor: string, idadeMinima = 0, hoje = new Date()): ResultadoNascimento {
+  const texto = valor.trim();
+  if (!texto) return { erro: 'Informe a data de nascimento.' };
+  if (!/^\d{1,2}[/.\-]\d{1,2}[/.\-]\d{4}$/.test(texto)) return { erro: 'Use dia/mês/ano, por exemplo 15/03/1985.' };
+  const iso = dataBrParaIso(texto);
+  if (!iso) return { erro: 'Essa data não existe. Confira dia, mês e ano.' };
+
+  const [ano, mes, dia] = iso.split('-').map(Number);
+  const nasc = new Date(ano, mes - 1, dia);
+  const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  if (nasc > inicioHoje) return { erro: 'A data de nascimento não pode ser no futuro.' };
+
+  let idade = inicioHoje.getFullYear() - ano;
+  if (inicioHoje.getMonth() < mes - 1 || (inicioHoje.getMonth() === mes - 1 && inicioHoje.getDate() < dia)) idade -= 1;
+  if (idade > 110) return { erro: 'Confira o ano de nascimento.' };
+  if (idade < idadeMinima) return { erro: `O cadastro é do responsável, que precisa ter ${idadeMinima} anos ou mais.` };
+  return { iso };
+}
+
 /**
  * "dd/mm/aaaa" (ou "d/m/aa") digitado pela pessoa -> "yyyy-MM-dd", ou null se não for uma data real.
  * Ano com dois dígitos vira 20xx.

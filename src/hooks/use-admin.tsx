@@ -20,7 +20,7 @@ type ContextoAdmin = {
   criarPastoral: (dados: NovaPastoral) => Promise<string | null>;
   editarPastoral: (
     pastoralId: string,
-    dados: { nome?: string; coordenadorId?: string; ativa?: boolean; funcoes?: FuncaoEdicao[] },
+    dados: { nome?: string; coordenadorId?: string; ativa?: boolean; exigeResponsavel?: boolean; funcoes?: FuncaoEdicao[] },
   ) => Promise<string | null>;
 };
 
@@ -125,7 +125,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   const editarPastoral = useCallback(
     (
       pastoralId: string,
-      d: { nome?: string; coordenadorId?: string; ativa?: boolean; funcoes?: FuncaoEdicao[] },
+      d: { nome?: string; coordenadorId?: string; ativa?: boolean; exigeResponsavel?: boolean; funcoes?: FuncaoEdicao[] },
     ) => escrever((t) => api.editarPastoral(t, pastoralId, d)),
     [escrever],
   );

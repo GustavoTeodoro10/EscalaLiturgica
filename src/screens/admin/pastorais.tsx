@@ -70,6 +70,9 @@ function CartaoPastoral({ pastoral, onEditar }: { pastoral: PastoralAdmin; onEdi
           <ThemedText type="small" themeColor="textSecondary">
             Coordenação: {pastoral.coordenador || 'não definida'}
           </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {pastoral.exigeResponsavel ? 'Crianças e adultos' : 'Só adultos'}
+          </ThemedText>
         </View>
         {pastoral.ativa ? null : (
           <ThemedText type="caption" themeColor="attentionText">
@@ -95,6 +98,7 @@ function FormPastoral({ pastoral, onFechar }: { pastoral?: PastoralAdmin; onFech
   const [nome, setNome] = useState(pastoral?.nome ?? '');
   const [coordenadorId, setCoordenadorId] = useState(pastoral?.coordenadorId ?? '');
   const [ativa, setAtiva] = useState(pastoral?.ativa ?? true);
+  const [exigeResponsavel, setExigeResponsavel] = useState(pastoral?.exigeResponsavel ?? false);
   const [funcoes, setFuncoes] = useState<FuncaoTexto[]>(() =>
     pastoral
       ? pastoral.funcoes.map((f) => ({ id: f.id, nome: f.nome, minimo: String(f.minimo), maximo: String(f.maximo) }))
@@ -129,10 +133,11 @@ function FormPastoral({ pastoral, onFechar }: { pastoral?: PastoralAdmin; onFech
     setErro(null);
     setSalvando(true);
     const falha = pastoral
-      ? await editarPastoral(pastoral.id, { nome: nomeLimpo, coordenadorId, ativa, funcoes: lista })
+      ? await editarPastoral(pastoral.id, { nome: nomeLimpo, coordenadorId, ativa, exigeResponsavel, funcoes: lista })
       : await criarPastoral({
           nome: nomeLimpo,
           coordenadorId,
+          exigeResponsavel,
           funcoes: lista.map((f) => ({ nome: f.nome, minimo: f.minimo, maximo: f.maximo })),
         });
     setSalvando(false);
@@ -153,6 +158,19 @@ function FormPastoral({ pastoral, onFechar }: { pastoral?: PastoralAdmin; onFech
         valorId={coordenadorId}
         onChange={setCoordenadorId}
       />
+
+      <View style={styles.coluna}>
+        <ThemedText type="smallBold">Quem serve nesta pastoral</ThemedText>
+        <View style={styles.chips} accessibilityRole="radiogroup">
+          <Chip rotulo="Só adultos" ativo={!exigeResponsavel} onPress={() => setExigeResponsavel(false)} />
+          <Chip rotulo="Crianças e adultos" ativo={exigeResponsavel} onPress={() => setExigeResponsavel(true)} />
+        </View>
+        <ThemedText type="small" themeColor="textSecondary">
+          {exigeResponsavel
+            ? 'O cadastro pede o nome e a data de nascimento de cada criança, vinculada a um responsável.'
+            : 'O cadastro não pergunta por filhos para entrar nesta pastoral.'}
+        </ThemedText>
+      </View>
 
       <View style={styles.coluna}>
         <ThemedText type="smallBold">Funções e vagas padrão por missa</ThemedText>
